@@ -1,17 +1,111 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'firebase_options.dart';
 
-void main() {
-  runApp(const MyApp());
+import 'core/theme/app_theme.dart';
+import 'core/widgets/main_navigation.dart';
+import 'routes/app_routes.dart';
+
+import 'features/auth/providers/auth_provider.dart';
+import 'features/crops/providers/crop_provider.dart';
+import 'features/finance/providers/finance_provider.dart';
+import 'features/home/providers/dashboard_provider.dart';
+
+import 'features/auth/screens/login_screen.dart';
+import 'features/auth/screens/register_screen.dart';
+import 'features/crops/screens/add_crop_screen.dart';
+import 'features/crops/screens/crop_detail_screen.dart';
+import 'features/finance/screens/add_expense_screen.dart';
+import 'features/finance/screens/expense_list_screen.dart';
+import 'features/finance/screens/finance_screen.dart';
+
+import 'models/crop_model.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  runApp(const FarmApp());
 }
 
-class name extends StatelessWidget {
-  const name({Key? key}) : super(key: key);
+class FarmApp extends StatelessWidget {
+  const FarmApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      child: null,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => CropProvider()),
+        ChangeNotifierProvider(create: (_) => FinanceProvider()),
+        ChangeNotifierProvider(create: (_) => DashboardProvider()),
+      ],
+      child: Consumer<AuthProvider>(
+        builder: (context, authProvider, _) {
+          return MaterialApp(
+            title: 'FarmApp',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            initialRoute: authProvider.isAuthenticated
+                ? AppRoutes.home
+                : AppRoutes.login,
+            onGenerateRoute: (settings) {
+              switch (settings.name) {
+                case AppRoutes.login:
+                  return MaterialPageRoute(
+                    builder: (_) => const LoginScreen(),
+                  );
+                case AppRoutes.register:
+                  return MaterialPageRoute(
+                    builder: (_) => const RegisterScreen(),
+                  );
+                case AppRoutes.home:
+                  return MaterialPageRoute(
+                    builder: (_) => const MainNavigation(),
+                  );
+                case AppRoutes.addCrop:
+                  final crop = settings.arguments as Crop?;
+                  return MaterialPageRoute(
+                    builder: (_) => AddCropScreen(crop: crop),
+                  );
+                case AppRoutes.cropDetail:
+                  final crop = settings.arguments as Crop;
+                  return MaterialPageRoute(
+                    builder: (_) => CropDetailScreen(crop: crop),
+                  );
+                case AppRoutes.finance:
+                  return MaterialPageRoute(
+                    builder: (_) => const FinanceScreen(),
+                  );
+                case AppRoutes.addExpense:
+                  final cropInfo =
+                      settings.arguments as Map<String, String>?;
+                  return MaterialPageRoute(
+                    builder: (_) =>
+                        AddExpenseScreen(cropInfo: cropInfo),
+                  );
+                case AppRoutes.expenseList:
+                  final args =
+                      settings.arguments as Map<String, String>?;
+                  return MaterialPageRoute(
+                    builder: (_) => ExpenseListScreen(
+                      cropId: args?['cropId'],
+                      cropName: args?['cropName'],
+                    ),
+                  );
+                default:
+                  return MaterialPageRoute(
+                    builder: (_) => const LoginScreen(),
+                  );
+              }
+            },
+          );
+        },
+      ),
     );
   }
 }
-
