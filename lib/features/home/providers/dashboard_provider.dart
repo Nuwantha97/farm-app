@@ -21,21 +21,26 @@ class DashboardProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    // Listen to crops for counts
-    _cropService
-        .getCrops(userId)
-        .listen(
-          (crops) {
-            _totalCrops = crops.length;
-            _activeCrops = crops.where((c) => c.status == 'growing').length;
-            _isLoading = false;
-            notifyListeners();
-          },
-          onError: (e) {
-            _isLoading = false;
-            notifyListeners();
-          },
-        );
+    // Auto-transition planted crops to growing after 1 day, then listen
+    _cropService.autoTransitionPlantedCrops(userId).then((_) {
+      // Listen to crops for counts
+      _cropService
+          .getCrops(userId)
+          .listen(
+            (crops) {
+              _totalCrops = crops.length;
+              _activeCrops = crops
+                  .where((c) => c.status == 'growing' || c.status == 'planted')
+                  .length;
+              _isLoading = false;
+              notifyListeners();
+            },
+            onError: (e) {
+              _isLoading = false;
+              notifyListeners();
+            },
+          );
+    });
 
     // Fetch total expenses
     _expenseService

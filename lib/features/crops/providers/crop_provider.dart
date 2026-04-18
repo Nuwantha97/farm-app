@@ -13,27 +13,30 @@ class CropProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  int get activeCropCount => _crops.where((c) => c.status == 'growing').length;
+  int get activeCropCount => _crops.where((c) => c.status == 'growing' || c.status == 'planted').length;
 
   /// Listen to crops for a user
   void loadCrops(String userId) {
     _isLoading = true;
     notifyListeners();
 
-    _service
-        .getCrops(userId)
-        .listen(
-          (cropList) {
-            _crops = cropList;
-            _isLoading = false;
-            notifyListeners();
-          },
-          onError: (e) {
-            _errorMessage = 'Failed to load crops';
-            _isLoading = false;
-            notifyListeners();
-          },
-        );
+    // Auto-transition planted crops to growing after 1 day
+    _service.autoTransitionPlantedCrops(userId).then((_) {
+      _service
+          .getCrops(userId)
+          .listen(
+            (cropList) {
+              _crops = cropList;
+              _isLoading = false;
+              notifyListeners();
+            },
+            onError: (e) {
+              _errorMessage = 'Failed to load crops';
+              _isLoading = false;
+              notifyListeners();
+            },
+          );
+    });
   }
 
   Future<bool> addCrop(String userId, Crop crop) async {

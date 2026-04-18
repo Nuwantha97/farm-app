@@ -25,6 +25,8 @@ class _CropListScreenState extends State<CropListScreen> {
 
   Color _statusColor(String status) {
     switch (status) {
+      case 'planted':
+        return AppColors.primary;
       case 'growing':
         return AppColors.success;
       case 'harvested':
@@ -38,6 +40,8 @@ class _CropListScreenState extends State<CropListScreen> {
 
   IconData _statusIcon(String status) {
     switch (status) {
+      case 'planted':
+        return Icons.spa;
       case 'growing':
         return Icons.grass;
       case 'harvested':

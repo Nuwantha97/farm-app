@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../../../models/crop_model.dart';
 
 class CropService {
@@ -40,5 +41,44 @@ class CropService {
   /// Delete a crop
   Future<void> deleteCrop(String userId, String cropId) async {
     await _cropsRef(userId).doc(cropId).delete();
+  }
+
+  /// Auto-transition crops from 'planted' to 'growing' after 1 day
+  Future<void> autoTransitionPlantedCrops(String userId) async {
+    try {
+      final snapshot = await _cropsRef(userId)
+          .where('status', isEqualTo: 'planted')
+          .get();
+
+      final now = DateTime.now();
+      final batch = _db.batch();
+      bool hasBatchUpdates = false;
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        // Use plantedDate if available, otherwise fallback to createdAt
+        DateTime? referenceDate;
+        if (data['plantedDate'] != null) {
+          referenceDate = (data['plantedDate'] as Timestamp).toDate();
+        } else if (data['createdAt'] != null) {
+          referenceDate = (data['createdAt'] as Timestamp).toDate();
+        }
+
+        if (referenceDate != null) {
+          final difference = now.difference(referenceDate).inDays;
+          if (difference >= 1) {
+            batch.update(doc.reference, {'status': 'growing'});
+            hasBatchUpdates = true;
+          }
+        }
+      }
+
+      if (hasBatchUpdates) {
+        await batch.commit();
+      }
+    } catch (e) {
+      debugPrint('Auto-transition error: $e');
+    }
   }
 }
