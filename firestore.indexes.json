@@ -1,0 +1,37 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "crops",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "expenses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "common_expenses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cropId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

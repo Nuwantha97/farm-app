@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===== Helper Functions =====
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isValidString(field) {
+      return field is string && field.size() > 0;
+    }
+    
+    function isValidNumber(field) {
+      return field is number && field >= 0;
+    }
+    
+    // ===== User Profile =====
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // ===== Crops =====
+      match /crops/{cropId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow create: if isAuthenticated() && isOwner(userId)
+          && isValidString(request.resource.data.name)
+          && isValidString(request.resource.data.type);
+        allow update: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && isOwner(userId);
+        
+        // ===== Crop Expenses =====
+        match /expenses/{expenseId} {
+          allow read: if isAuthenticated() && isOwner(userId);
+          allow create: if isAuthenticated() && isOwner(userId)
+            && isValidString(request.resource.data.title)
+            && isValidNumber(request.resource.data.amount);
+          allow update: if isAuthenticated() && isOwner(userId);
+          allow delete: if isAuthenticated() && isOwner(userId);
+        }
+      }
+      
+      // ===== Common Expenses =====
+      match /common_expenses/{expenseId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow create: if isAuthenticated() && isOwner(userId)
+          && isValidString(request.resource.data.title)
+          && isValidNumber(request.resource.data.amount);
+        allow update: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // ===== Sales =====
+      match /sales/{saleId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow create: if isAuthenticated() && isOwner(userId)
+          && isValidString(request.resource.data.cropId)
+          && isValidNumber(request.resource.data.amount);
+        allow update: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && isOwner(userId);
+      }
+    }
+    
+    // ===== Deny everything else =====
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
