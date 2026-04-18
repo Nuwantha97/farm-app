@@ -21,23 +21,26 @@ class ExpenseListScreen extends StatelessWidget {
       ),
       body: Consumer<FinanceProvider>(
         builder: (context, finance, _) {
-          final expenses =
-              cropId != null ? finance.cropExpenses : finance.commonExpenses;
+          final expenses = cropId != null
+              ? finance.cropExpenses
+              : finance.commonExpenses;
 
           if (expenses.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.receipt_long_outlined,
-                      size: 80,
-                      color: AppColors.textHint.withValues(alpha: 0.4)),
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 80,
+                    color: AppColors.textHint.withValues(alpha: 0.4),
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'No expenses found',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -63,16 +66,19 @@ class ExpenseListScreen extends StatelessWidget {
                   child: const Icon(Icons.delete, color: Colors.white),
                 ),
                 onDismissed: (_) {
-                  final userId =
-                      context.read<AuthProvider>().user?.uid;
+                  final userId = context.read<AuthProvider>().user?.uid;
                   if (userId != null) {
                     if (expense.cropId != null) {
                       context.read<FinanceProvider>().deleteCropExpense(
-                          userId, expense.cropId!, expense.id);
+                        userId,
+                        expense.cropId!,
+                        expense.id,
+                      );
                     } else {
-                      context
-                          .read<FinanceProvider>()
-                          .deleteCommonExpense(userId, expense.id);
+                      context.read<FinanceProvider>().deleteCommonExpense(
+                        userId,
+                        expense.id,
+                      );
                     }
                   }
                 },
@@ -93,11 +99,6 @@ class ExpenseListScreen extends StatelessWidget {
                           color: AppColors.expense.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Icon(
-                          _categoryIcon(expense.category),
-                          color: AppColors.expense,
-                          size: 24,
-                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -106,27 +107,15 @@ class ExpenseListScreen extends StatelessWidget {
                           children: [
                             Text(
                               expense.title,
-                              style:
-                                  Theme.of(context).textTheme.titleMedium,
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${expense.category} • ${dateFormat.format(expense.date)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(fontSize: 12),
+                              dateFormat.format(expense.date),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                             ),
-                            if (expense.notes.isNotEmpty)
-                              Text(
-                                expense.notes,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(fontSize: 11),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
                           ],
                         ),
                       ),
@@ -147,22 +136,5 @@ class ExpenseListScreen extends StatelessWidget {
         },
       ),
     );
-  }
-
-  IconData _categoryIcon(String category) {
-    switch (category) {
-      case 'labor':
-        return Icons.people_outline;
-      case 'fertilizer':
-        return Icons.science_outlined;
-      case 'seeds':
-        return Icons.grass;
-      case 'equipment':
-        return Icons.build_outlined;
-      case 'transport':
-        return Icons.local_shipping_outlined;
-      default:
-        return Icons.receipt_outlined;
-    }
   }
 }

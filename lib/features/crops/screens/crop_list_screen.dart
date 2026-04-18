@@ -25,7 +25,7 @@ class _CropListScreenState extends State<CropListScreen> {
 
   Color _statusColor(String status) {
     switch (status) {
-      case 'active':
+      case 'growing':
         return AppColors.success;
       case 'harvested':
         return AppColors.secondary;
@@ -38,7 +38,7 @@ class _CropListScreenState extends State<CropListScreen> {
 
   IconData _statusIcon(String status) {
     switch (status) {
-      case 'active':
+      case 'growing':
         return Icons.grass;
       case 'harvested':
         return Icons.agriculture;
@@ -87,8 +87,8 @@ class _CropListScreenState extends State<CropListScreen> {
                   Text(
                     'No crops yet',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -134,11 +134,7 @@ class _CropListScreenState extends State<CropListScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            Navigator.pushNamed(
-              context,
-              AppRoutes.cropDetail,
-              arguments: crop,
-            );
+            Navigator.pushNamed(context, AppRoutes.cropDetail, arguments: crop);
           },
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -173,10 +169,13 @@ class _CropListScreenState extends State<CropListScreen> {
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: _statusColor(crop.status)
-                                  .withValues(alpha: 0.12),
+                              color: _statusColor(
+                                crop.status,
+                              ).withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -188,42 +187,10 @@ class _CropListScreenState extends State<CropListScreen> {
                               ),
                             ),
                           ),
-                          if (crop.type.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            Text(
-                              crop.type,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
                         ],
                       ),
                     ],
                   ),
-                ),
-                // Area badge
-                if (crop.area > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${crop.area} ac',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                    ),
-                  ),
-                const SizedBox(width: 4),
-                const Icon(
-                  Icons.chevron_right,
-                  color: AppColors.textHint,
                 ),
               ],
             ),

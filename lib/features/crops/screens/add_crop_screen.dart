@@ -21,25 +21,24 @@ class _AddCropScreenState extends State<AddCropScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _typeController = TextEditingController();
-  final _areaController = TextEditingController();
-  final _notesController = TextEditingController();
-  String _selectedStatus = 'active';
+  String _selectedStatus = 'growing';
   DateTime? _plantedDate;
   bool _isLoading = false;
 
   bool get isEditMode => widget.crop != null;
 
-  final List<String> _statusOptions = ['planning', 'active', 'harvested'];
+  final List<String> _statusOptions = [
+    'planning',
+    'planted',
+    'growing',
+    'harvested',
+  ];
 
   @override
   void initState() {
     super.initState();
     if (isEditMode) {
       _nameController.text = widget.crop!.name;
-      _typeController.text = widget.crop!.type;
-      _areaController.text =
-          widget.crop!.area > 0 ? widget.crop!.area.toString() : '';
-      _notesController.text = widget.crop!.notes;
       _selectedStatus = widget.crop!.status;
       _plantedDate = widget.crop!.plantedDate;
     }
@@ -49,8 +48,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
   void dispose() {
     _nameController.dispose();
     _typeController.dispose();
-    _areaController.dispose();
-    _notesController.dispose();
     super.dispose();
   }
 
@@ -94,25 +91,23 @@ class _AddCropScreenState extends State<AddCropScreen> {
         'name': _nameController.text.trim(),
         'type': _typeController.text.trim(),
         'status': _selectedStatus,
-        'area': double.tryParse(_areaController.text) ?? 0.0,
-        'notes': _notesController.text.trim(),
       };
       if (_plantedDate != null) {
-        data['plantedDate'] = _plantedDate!;
+        data['plantedDate'] = _plantedDate! as String;
       }
-      final success =
-          await cropProvider.updateCrop(userId, widget.crop!.id, data);
+      final success = await cropProvider.updateCrop(
+        userId,
+        widget.crop!.id,
+        data,
+      );
       if (success && mounted) Navigator.pop(context);
     } else {
       // Add
       final crop = Crop(
         id: '',
         name: _nameController.text.trim(),
-        type: _typeController.text.trim(),
         status: _selectedStatus,
         plantedDate: _plantedDate,
-        area: double.tryParse(_areaController.text) ?? 0.0,
-        notes: _notesController.text.trim(),
       );
       final success = await cropProvider.addCrop(userId, crop);
       if (success && mounted) Navigator.pop(context);
@@ -126,9 +121,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
     final dateFormat = DateFormat('MMM dd, yyyy');
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isEditMode ? 'Edit Crop' : 'Add Crop'),
-      ),
+      appBar: AppBar(title: Text(isEditMode ? 'Edit Crop' : 'Add Crop')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -150,21 +143,16 @@ class _AddCropScreenState extends State<AddCropScreen> {
               ),
               const SizedBox(height: 16),
 
-              CustomTextField(
-                controller: _typeController,
-                label: 'Crop Type',
-                hint: 'e.g., Grain, Vegetable, Fruit',
-                prefixIcon: Icons.category_outlined,
-              ),
-              const SizedBox(height: 16),
-
               // Status dropdown
               DropdownButtonFormField<String>(
                 initialValue: _selectedStatus,
                 decoration: const InputDecoration(
                   labelText: 'Status',
-                  prefixIcon: Icon(Icons.flag_outlined,
-                      color: AppColors.textSecondary, size: 22),
+                  prefixIcon: Icon(
+                    Icons.flag_outlined,
+                    color: AppColors.textSecondary,
+                    size: 22,
+                  ),
                 ),
                 items: _statusOptions.map((status) {
                   return DropdownMenuItem(
@@ -180,16 +168,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
               ),
               const SizedBox(height: 16),
 
-              CustomTextField(
-                controller: _areaController,
-                label: 'Area (acres)',
-                hint: 'e.g., 2.5',
-                prefixIcon: Icons.square_foot,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              ),
-              const SizedBox(height: 16),
-
               // Date picker
               GestureDetector(
                 onTap: _selectDate,
@@ -200,8 +178,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
                       hintText: _plantedDate != null
                           ? dateFormat.format(_plantedDate!)
                           : 'Select date',
-                      prefixIcon: const Icon(Icons.calendar_today,
-                          color: AppColors.textSecondary, size: 22),
+                      prefixIcon: const Icon(
+                        Icons.calendar_today,
+                        color: AppColors.textSecondary,
+                        size: 22,
+                      ),
                       suffixIcon: _plantedDate != null
                           ? IconButton(
                               icon: const Icon(Icons.clear, size: 20),
@@ -220,15 +201,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              CustomTextField(
-                controller: _notesController,
-                label: 'Notes',
-                hint: 'Any additional notes...',
-                prefixIcon: Icons.notes,
-                maxLines: 3,
-              ),
-              const SizedBox(height: 32),
 
               CustomButton(
                 text: isEditMode ? 'Update Crop' : 'Add Crop',

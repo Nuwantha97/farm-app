@@ -25,10 +25,10 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
     final userId = context.read<AuthProvider>().user?.uid;
     if (userId != null) {
       context.read<FinanceProvider>().loadCropExpenses(
-            userId,
-            widget.crop.id,
-            cropName: widget.crop.name,
-          );
+        userId,
+        widget.crop.id,
+        cropName: widget.crop.name,
+      );
     }
   }
 
@@ -44,11 +44,7 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             onPressed: () {
-              Navigator.pushNamed(
-                context,
-                AppRoutes.addCrop,
-                arguments: crop,
-              );
+              Navigator.pushNamed(context, AppRoutes.addCrop, arguments: crop);
             },
           ),
           IconButton(
@@ -88,7 +84,11 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
                           color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.eco, color: Colors.white, size: 32),
+                        child: const Icon(
+                          Icons.eco,
+                          color: Colors.white,
+                          size: 32,
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -106,7 +106,9 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
                             const SizedBox(height: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(8),
@@ -128,10 +130,6 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
                   const SizedBox(height: 20),
                   Row(
                     children: [
-                      _infoChip(Icons.category_outlined, 'Type', crop.type),
-                      const SizedBox(width: 16),
-                      _infoChip(Icons.square_foot, 'Area', '${crop.area} ac'),
-                      const SizedBox(width: 16),
                       _infoChip(
                         Icons.calendar_today,
                         'Planted',
@@ -145,34 +143,6 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Notes
-            if (crop.notes.isNotEmpty) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: AppColors.cardShadow,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Notes',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      crop.notes,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
 
             // Expenses Section
             Row(
@@ -247,7 +217,10 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
           Text(
             value,
             style: const TextStyle(
-                color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -255,7 +228,9 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
           Text(
             label,
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7), fontSize: 11),
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 11,
+            ),
           ),
         ],
       ),
@@ -294,15 +269,15 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
               children: [
                 Text(
                   expense.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: 15,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontSize: 15),
                 ),
                 Text(
-                  '${expense.category} • ${dateFormat.format(expense.date)}',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 12,
-                      ),
+                  dateFormat.format(expense.date),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                 ),
               ],
             ),
@@ -345,8 +320,10 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
                 parentNavigator.pop();
               }
             },
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),

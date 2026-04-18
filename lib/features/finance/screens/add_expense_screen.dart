@@ -10,7 +10,8 @@ import '../../crops/providers/crop_provider.dart';
 import '../providers/finance_provider.dart';
 
 class AddExpenseScreen extends StatefulWidget {
-  final Map<String, String>? cropInfo; // {cropId, cropName} for pre-selected crop
+  final Map<String, String>?
+  cropInfo; // {cropId, cropName} for pre-selected crop
 
   const AddExpenseScreen({super.key, this.cropInfo});
 
@@ -23,21 +24,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final _titleController = TextEditingController();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
-  String _selectedCategory = 'other';
   DateTime _selectedDate = DateTime.now();
   bool _isCommonExpense = true;
   String? _selectedCropId;
   String? _selectedCropName;
   bool _isLoading = false;
-
-  final List<Map<String, dynamic>> _categories = [
-    {'value': 'labor', 'label': 'Labor', 'icon': Icons.people_outline},
-    {'value': 'fertilizer', 'label': 'Fertilizer', 'icon': Icons.science_outlined},
-    {'value': 'seeds', 'label': 'Seeds', 'icon': Icons.grass},
-    {'value': 'equipment', 'label': 'Equipment', 'icon': Icons.build_outlined},
-    {'value': 'transport', 'label': 'Transport', 'icon': Icons.local_shipping_outlined},
-    {'value': 'other', 'label': 'Other', 'icon': Icons.more_horiz},
-  ];
 
   @override
   void initState() {
@@ -95,8 +86,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       title: _titleController.text.trim(),
       amount: double.tryParse(_amountController.text) ?? 0.0,
       date: _selectedDate,
-      category: _selectedCategory,
-      notes: _notesController.text.trim(),
       cropId: _isCommonExpense ? null : _selectedCropId,
       cropName: _isCommonExpense ? null : _selectedCropName,
     );
@@ -106,14 +95,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       success = await financeProvider.addCommonExpense(userId, expense);
     } else {
       if (_selectedCropId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a crop')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Please select a crop')));
         setState(() => _isLoading = false);
         return;
       }
       success = await financeProvider.addCropExpense(
-          userId, _selectedCropId!, expense);
+        userId,
+        _selectedCropId!,
+        expense,
+      );
     }
 
     if (success && mounted) Navigator.pop(context);
@@ -126,9 +118,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final crops = context.watch<CropProvider>().crops;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Add Expense'),
-      ),
+      appBar: AppBar(title: const Text('Add Expense')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -147,8 +137,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            setState(() => _isCommonExpense = true),
+                        onTap: () => setState(() => _isCommonExpense = true),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
@@ -172,8 +161,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     ),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            setState(() => _isCommonExpense = false),
+                        onTap: () => setState(() => _isCommonExpense = false),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
@@ -206,8 +194,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   initialValue: _selectedCropId,
                   decoration: const InputDecoration(
                     labelText: 'Select Crop',
-                    prefixIcon: Icon(Icons.eco_outlined,
-                        color: AppColors.textSecondary, size: 22),
+                    prefixIcon: Icon(
+                      Icons.eco_outlined,
+                      color: AppColors.textSecondary,
+                      size: 22,
+                    ),
                   ),
                   items: crops.map((crop) {
                     return DropdownMenuItem(
@@ -251,8 +242,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 label: 'Amount (Rs.)',
                 hint: 'e.g., 5000',
                 prefixIcon: Icons.attach_money,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter amount';
@@ -265,66 +257,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Category selector
-              Text(
-                'Category',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _categories.map((cat) {
-                  final isSelected = _selectedCategory == cat['value'];
-                  return GestureDetector(
-                    onTap: () =>
-                        setState(() => _selectedCategory = cat['value']),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primary
-                            : AppColors.surfaceVariant,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.primary
-                              : AppColors.textHint.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            cat['icon'],
-                            size: 18,
-                            color: isSelected
-                                ? Colors.white
-                                : AppColors.textSecondary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            cat['label'],
-                            style: TextStyle(
-                              color: isSelected
-                                  ? Colors.white
-                                  : AppColors.textPrimary,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-
               // Date picker
               GestureDetector(
                 onTap: _selectDate,
@@ -332,8 +264,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   child: TextFormField(
                     decoration: InputDecoration(
                       labelText: 'Date',
-                      prefixIcon: const Icon(Icons.calendar_today,
-                          color: AppColors.textSecondary, size: 22),
+                      prefixIcon: const Icon(
+                        Icons.calendar_today,
+                        color: AppColors.textSecondary,
+                        size: 22,
+                      ),
                     ),
                     controller: TextEditingController(
                       text: dateFormat.format(_selectedDate),
@@ -342,15 +277,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              CustomTextField(
-                controller: _notesController,
-                label: 'Notes (optional)',
-                hint: 'Additional details...',
-                prefixIcon: Icons.notes,
-                maxLines: 2,
-              ),
-              const SizedBox(height: 32),
 
               CustomButton(
                 text: 'Save Expense',

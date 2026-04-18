@@ -22,24 +22,29 @@ class DashboardProvider extends ChangeNotifier {
     notifyListeners();
 
     // Listen to crops for counts
-    _cropService.getCrops(userId).listen(
-      (crops) {
-        _totalCrops = crops.length;
-        _activeCrops = crops.where((c) => c.status == 'active').length;
-        _isLoading = false;
-        notifyListeners();
-      },
-      onError: (e) {
-        _isLoading = false;
-        notifyListeners();
-      },
-    );
+    _cropService
+        .getCrops(userId)
+        .listen(
+          (crops) {
+            _totalCrops = crops.length;
+            _activeCrops = crops.where((c) => c.status == 'growing').length;
+            _isLoading = false;
+            notifyListeners();
+          },
+          onError: (e) {
+            _isLoading = false;
+            notifyListeners();
+          },
+        );
 
     // Fetch total expenses
-    _expenseService.getTotalExpenses(userId).then((total) {
-      _totalExpenses = total;
-      notifyListeners();
-    }).catchError((_) {});
+    _expenseService
+        .getTotalExpenses(userId)
+        .then((total) {
+          _totalExpenses = total;
+          notifyListeners();
+        })
+        .catchError((_) {});
   }
 
   /// Refresh expenses total

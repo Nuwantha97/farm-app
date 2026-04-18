@@ -13,26 +13,27 @@ class CropProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  int get activeCropCount =>
-      _crops.where((c) => c.status == 'active').length;
+  int get activeCropCount => _crops.where((c) => c.status == 'growing').length;
 
   /// Listen to crops for a user
   void loadCrops(String userId) {
     _isLoading = true;
     notifyListeners();
 
-    _service.getCrops(userId).listen(
-      (cropList) {
-        _crops = cropList;
-        _isLoading = false;
-        notifyListeners();
-      },
-      onError: (e) {
-        _errorMessage = 'Failed to load crops';
-        _isLoading = false;
-        notifyListeners();
-      },
-    );
+    _service
+        .getCrops(userId)
+        .listen(
+          (cropList) {
+            _crops = cropList;
+            _isLoading = false;
+            notifyListeners();
+          },
+          onError: (e) {
+            _errorMessage = 'Failed to load crops';
+            _isLoading = false;
+            notifyListeners();
+          },
+        );
   }
 
   Future<bool> addCrop(String userId, Crop crop) async {
@@ -47,7 +48,10 @@ class CropProvider extends ChangeNotifier {
   }
 
   Future<bool> updateCrop(
-      String userId, String cropId, Map<String, dynamic> data) async {
+    String userId,
+    String cropId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       await _service.updateCrop(userId, cropId, data);
       return true;

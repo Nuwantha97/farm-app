@@ -53,10 +53,7 @@ class _FinanceScreenState extends State<FinanceScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildOverviewTab(),
-          _buildCommonExpensesTab(),
-        ],
+        children: [_buildOverviewTab(), _buildCommonExpensesTab()],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
@@ -106,16 +103,16 @@ class _FinanceScreenState extends State<FinanceScreen>
                             color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(Icons.account_balance_wallet,
-                              color: Colors.white, size: 24),
+                          child: const Icon(
+                            Icons.account_balance_wallet,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         const Text(
                           'Total Expenses',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 16,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
                         ),
                       ],
                     ),
@@ -171,20 +168,24 @@ class _FinanceScreenState extends State<FinanceScreen>
                     padding: const EdgeInsets.symmetric(vertical: 32),
                     child: Column(
                       children: [
-                        Icon(Icons.receipt_long_outlined,
-                            size: 64,
-                            color: AppColors.textHint.withValues(alpha: 0.4)),
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          size: 64,
+                          color: AppColors.textHint.withValues(alpha: 0.4),
+                        ),
                         const SizedBox(height: 12),
-                        Text('No expenses yet',
-                            style: Theme.of(context).textTheme.bodyMedium),
+                        Text(
+                          'No expenses yet',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                       ],
                     ),
                   ),
                 )
               else
-                ...finance.allExpenses.take(10).map(
-                      (expense) => _expenseListItem(context, expense),
-                    ),
+                ...finance.allExpenses
+                    .take(10)
+                    .map((expense) => _expenseListItem(context, expense)),
             ],
           ),
         );
@@ -200,17 +201,23 @@ class _FinanceScreenState extends State<FinanceScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.receipt_long_outlined,
-                    size: 80,
-                    color: AppColors.textHint.withValues(alpha: 0.4)),
+                Icon(
+                  Icons.receipt_long_outlined,
+                  size: 80,
+                  color: AppColors.textHint.withValues(alpha: 0.4),
+                ),
                 const SizedBox(height: 16),
-                Text('No common expenses',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppColors.textSecondary,
-                        )),
+                Text(
+                  'No common expenses',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text('Add farm-wide expenses here',
-                    style: Theme.of(context).textTheme.bodyMedium),
+                Text(
+                  'Add farm-wide expenses here',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ],
             ),
           );
@@ -227,8 +234,13 @@ class _FinanceScreenState extends State<FinanceScreen>
     );
   }
 
-  Widget _statCard(BuildContext context, String label, String value,
-      IconData icon, Color color) {
+  Widget _statCard(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -250,9 +262,9 @@ class _FinanceScreenState extends State<FinanceScreen>
           const SizedBox(height: 12),
           Text(
             value,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
         ],
@@ -279,8 +291,11 @@ class _FinanceScreenState extends State<FinanceScreen>
               color: AppColors.expense.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.receipt_outlined,
-                color: AppColors.expense, size: 22),
+            child: const Icon(
+              Icons.receipt_outlined,
+              color: AppColors.expense,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -289,17 +304,15 @@ class _FinanceScreenState extends State<FinanceScreen>
               children: [
                 Text(
                   expense.title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontSize: 15),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontSize: 15),
                 ),
                 Text(
-                  '${expense.category} • ${dateFormat.format(expense.date)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(fontSize: 12),
+                  dateFormat.format(expense.date),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                 ),
               ],
             ),

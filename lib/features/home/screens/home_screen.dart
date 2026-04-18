@@ -81,8 +81,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: IconButton(
-                              icon: const Icon(Icons.notifications_outlined,
-                                  color: Colors.white),
+                              icon: const Icon(
+                                Icons.notifications_outlined,
+                                color: Colors.white,
+                              ),
                               onPressed: () {},
                             ),
                           ),
@@ -93,13 +95,17 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: IconButton(
-                              icon: const Icon(Icons.logout,
-                                  color: Colors.white),
+                              icon: const Icon(
+                                Icons.logout,
+                                color: Colors.white,
+                              ),
                               onPressed: () async {
                                 await context.read<AuthProvider>().logout();
                                 if (context.mounted) {
                                   Navigator.pushReplacementNamed(
-                                      context, AppRoutes.login);
+                                    context,
+                                    AppRoutes.login,
+                                  );
                                 }
                               },
                             ),
@@ -127,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Expanded(
                             child: _summaryCard(
                               icon: Icons.grass,
-                              label: 'Active',
+                              label: 'Growing',
                               value: '${dashboard.activeCrops}',
                               color: AppColors.secondary,
                             ),
@@ -137,7 +143,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: _summaryCard(
                               icon: Icons.account_balance_wallet,
                               label: 'Expenses',
-                              value: 'Rs.${dashboard.totalExpenses.toStringAsFixed(0)}',
+                              value:
+                                  'Rs.${dashboard.totalExpenses.toStringAsFixed(0)}',
                               color: AppColors.expense,
                             ),
                           ),
@@ -182,7 +189,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: 'Add Expense',
                           color: AppColors.expense,
                           onTap: () => Navigator.pushNamed(
-                              context, AppRoutes.addExpense),
+                            context,
+                            AppRoutes.addExpense,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -192,8 +201,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           icon: Icons.bar_chart_outlined,
                           label: 'Finance',
                           color: AppColors.info,
-                          onTap: () => Navigator.pushNamed(
-                              context, AppRoutes.finance),
+                          onTap: () =>
+                              Navigator.pushNamed(context, AppRoutes.finance),
                         ),
                       ),
                     ],
@@ -233,9 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 12),
                         Text(
                           'Your farming journey starts here',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 4),
@@ -268,9 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: Column(
         children: [
@@ -329,10 +334,10 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    fontSize: 13,
-                  ),
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+                fontSize: 13,
+              ),
             ),
           ],
         ),

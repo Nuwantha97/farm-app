@@ -26,9 +26,7 @@ import 'models/crop_model.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Enable offline persistence with unlimited cache
   // This allows the app to work without internet connection
@@ -64,9 +62,7 @@ class FarmApp extends StatelessWidget {
             onGenerateRoute: (settings) {
               switch (settings.name) {
                 case AppRoutes.login:
-                  return MaterialPageRoute(
-                    builder: (_) => const LoginScreen(),
-                  );
+                  return MaterialPageRoute(builder: (_) => const LoginScreen());
                 case AppRoutes.register:
                   return MaterialPageRoute(
                     builder: (_) => const RegisterScreen(),
@@ -90,15 +86,12 @@ class FarmApp extends StatelessWidget {
                     builder: (_) => const FinanceScreen(),
                   );
                 case AppRoutes.addExpense:
-                  final cropInfo =
-                      settings.arguments as Map<String, String>?;
+                  final cropInfo = settings.arguments as Map<String, String>?;
                   return MaterialPageRoute(
-                    builder: (_) =>
-                        AddExpenseScreen(cropInfo: cropInfo),
+                    builder: (_) => AddExpenseScreen(cropInfo: cropInfo),
                   );
                 case AppRoutes.expenseList:
-                  final args =
-                      settings.arguments as Map<String, String>?;
+                  final args = settings.arguments as Map<String, String>?;
                   return MaterialPageRoute(
                     builder: (_) => ExpenseListScreen(
                       cropId: args?['cropId'],
@@ -106,9 +99,7 @@ class FarmApp extends StatelessWidget {
                     ),
                   );
                 default:
-                  return MaterialPageRoute(
-                    builder: (_) => const LoginScreen(),
-                  );
+                  return MaterialPageRoute(builder: (_) => const LoginScreen());
               }
             },
           );
