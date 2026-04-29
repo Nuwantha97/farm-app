@@ -33,6 +33,10 @@ class _CropListScreenState extends State<CropListScreen> {
         return AppColors.secondary;
       case 'planning':
         return AppColors.info;
+      case 'sold':
+        return const Color(0xFF00897B);
+      case 'consumed':
+        return AppColors.warning;
       default:
         return AppColors.textHint;
     }
@@ -48,6 +52,10 @@ class _CropListScreenState extends State<CropListScreen> {
         return Icons.agriculture;
       case 'planning':
         return Icons.schedule;
+      case 'sold':
+        return Icons.sell;
+      case 'consumed':
+        return Icons.restaurant;
       default:
         return Icons.help_outline;
     }

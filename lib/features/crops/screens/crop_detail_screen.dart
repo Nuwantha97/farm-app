@@ -137,8 +137,33 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
                             ? dateFormat.format(crop.plantedDate!)
                             : 'N/A',
                       ),
+                      if (crop.harvestedDate != null)
+                        _infoChip(
+                          Icons.agriculture,
+                          'Harvested',
+                          dateFormat.format(crop.harvestedDate!),
+                        ),
                     ],
                   ),
+                  if (crop.soldAmount != null || crop.consumedEstimatedAmount != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        if (crop.soldAmount != null)
+                          _infoChip(
+                            Icons.sell,
+                            'Sold Amount',
+                            'Rs. ${crop.soldAmount!.toStringAsFixed(2)}',
+                          ),
+                        if (crop.consumedEstimatedAmount != null)
+                          _infoChip(
+                            Icons.restaurant,
+                            'Est. Value',
+                            'Rs. ${crop.consumedEstimatedAmount!.toStringAsFixed(2)}',
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

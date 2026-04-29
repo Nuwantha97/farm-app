@@ -9,11 +9,14 @@ class DashboardProvider extends ChangeNotifier {
   int _totalCrops = 0;
   int _activeCrops = 0;
   double _totalExpenses = 0.0;
+  double _totalIncome = 0.0;
   bool _isLoading = false;
 
   int get totalCrops => _totalCrops;
   int get activeCrops => _activeCrops;
   double get totalExpenses => _totalExpenses;
+  double get totalIncome => _totalIncome;
+  double get totalProfit => _totalIncome - _totalExpenses;
   bool get isLoading => _isLoading;
 
   /// Load dashboard data
@@ -50,11 +53,21 @@ class DashboardProvider extends ChangeNotifier {
           notifyListeners();
         })
         .catchError((_) {});
+
+    // Fetch total income
+    _expenseService
+        .getTotalIncome(userId)
+        .then((total) {
+          _totalIncome = total;
+          notifyListeners();
+        })
+        .catchError((_) {});
   }
 
   /// Refresh expenses total
   Future<void> refreshExpenses(String userId) async {
     _totalExpenses = await _expenseService.getTotalExpenses(userId);
+    _totalIncome = await _expenseService.getTotalIncome(userId);
     notifyListeners();
   }
 }

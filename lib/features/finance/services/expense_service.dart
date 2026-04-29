@@ -75,6 +75,59 @@ class ExpenseService {
         .delete();
   }
 
+  /// Get total income from sold and consumed crops
+  Future<double> getTotalIncome(String userId) async {
+    double total = 0.0;
+
+    final cropsRef = _db.collection('users').doc(userId).collection('crops');
+
+    // Sum soldAmount from crops with status 'sold'
+    final soldSnap = await cropsRef
+        .where('status', isEqualTo: 'sold')
+        .get();
+    for (var doc in soldSnap.docs) {
+      final data = doc.data();
+      total += (data['soldAmount'] ?? 0.0).toDouble();
+    }
+
+    // Sum consumedEstimatedAmount from crops with status 'consumed'
+    final consumedSnap = await cropsRef
+        .where('status', isEqualTo: 'consumed')
+        .get();
+    for (var doc in consumedSnap.docs) {
+      final data = doc.data();
+      total += (data['consumedEstimatedAmount'] ?? 0.0).toDouble();
+    }
+
+    return total;
+  }
+
+  /// Get income entries (sold/consumed crops) as a stream
+  Stream<List<Map<String, dynamic>>> getIncomeEntries(String userId) {
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('crops')
+        .where('status', whereIn: ['sold', 'consumed'])
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              final status = data['status'] ?? '';
+              return {
+                'id': doc.id,
+                'name': data['name'] ?? '',
+                'status': status,
+                'amount': status == 'sold'
+                    ? (data['soldAmount'] ?? 0.0).toDouble()
+                    : (data['consumedEstimatedAmount'] ?? 0.0).toDouble(),
+                'date': data['harvestedDate'] != null
+                    ? (data['harvestedDate'] as Timestamp).toDate()
+                    : (data['createdAt'] as Timestamp?)?.toDate() ??
+                        DateTime.now(),
+              };
+            }).toList());
+  }
+
   /// Get total expenses for a user (all crops + common)
   Future<double> getTotalExpenses(String userId) async {
     double total = 0.0;

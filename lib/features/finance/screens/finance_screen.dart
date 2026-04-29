@@ -20,12 +20,14 @@ class _FinanceScreenState extends State<FinanceScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     final userId = context.read<AuthProvider>().user?.uid;
     if (userId != null) {
       final financeProvider = context.read<FinanceProvider>();
       financeProvider.loadCommonExpenses(userId);
       financeProvider.fetchTotalExpenses(userId);
+      financeProvider.fetchTotalIncome(userId);
+      financeProvider.loadIncomeEntries(userId);
     }
   }
 
@@ -47,13 +49,18 @@ class _FinanceScreenState extends State<FinanceScreen>
           unselectedLabelColor: Colors.white60,
           tabs: const [
             Tab(text: 'Overview'),
+            Tab(text: 'Income'),
             Tab(text: 'Common Expenses'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_buildOverviewTab(), _buildCommonExpensesTab()],
+        children: [
+          _buildOverviewTab(),
+          _buildIncomeTab(),
+          _buildCommonExpensesTab(),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
@@ -68,61 +75,194 @@ class _FinanceScreenState extends State<FinanceScreen>
   Widget _buildOverviewTab() {
     return Consumer<FinanceProvider>(
       builder: (context, finance, _) {
+        final profit = finance.totalProfit;
+        final isProfitable = profit >= 0;
+
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Total expenses card
+              // Summary cards row
+              Row(
+                children: [
+                  // Total Income card
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2E7D32), Color(0xFF66BB6A)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.income.withValues(alpha: 0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.trending_up,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Total Income',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Rs. ${finance.totalIncome.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Total Expenses card
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFE53935), Color(0xFFEF5350)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.expense.withValues(alpha: 0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.trending_down,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Total Expenses',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Rs. ${finance.totalExpenses.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Total Profit card
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFE53935), Color(0xFFEF5350)],
+                  gradient: LinearGradient(
+                    colors: isProfitable
+                        ? [const Color(0xFF1B5E20), const Color(0xFF388E3C)]
+                        : [const Color(0xFFB71C1C), const Color(0xFFD32F2F)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.expense.withValues(alpha: 0.3),
+                      color: (isProfitable
+                              ? AppColors.success
+                              : AppColors.error)
+                          .withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.account_balance_wallet,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Total Expenses',
-                          style: TextStyle(color: Colors.white70, fontSize: 16),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Rs. ${finance.totalExpenses.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        isProfitable
+                            ? Icons.emoji_events
+                            : Icons.warning_amber,
                         color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Total Profit',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${isProfitable ? '' : '-'}Rs. ${profit.abs().toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -188,6 +328,47 @@ class _FinanceScreenState extends State<FinanceScreen>
                     .map((expense) => _expenseListItem(context, expense)),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildIncomeTab() {
+    return Consumer<FinanceProvider>(
+      builder: (context, finance, _) {
+        if (finance.incomeEntries.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.monetization_on_outlined,
+                  size: 80,
+                  color: AppColors.textHint.withValues(alpha: 0.4),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No income recorded',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Mark crops as Sold or Consumed to track income',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: finance.incomeEntries.length,
+          itemBuilder: (context, index) {
+            return _incomeListItem(context, finance.incomeEntries[index]);
+          },
         );
       },
     );
@@ -267,6 +448,94 @@ class _FinanceScreenState extends State<FinanceScreen>
             ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ),
+    );
+  }
+
+  Widget _incomeListItem(BuildContext context, Map<String, dynamic> entry) {
+    final dateFormat = DateFormat('MMM dd');
+    final isSold = entry['status'] == 'sold';
+    final color = isSold ? const Color(0xFF00897B) : AppColors.warning;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppColors.cardShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isSold ? Icons.sell : Icons.restaurant,
+              color: color,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry['name'] ?? '',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontSize: 15),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        isSold ? 'Sold' : 'Consumed',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      entry['date'] != null
+                          ? dateFormat.format(entry['date'] as DateTime)
+                          : '',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Text(
+            'Rs. ${(entry['amount'] as double).toStringAsFixed(2)}',
+            style: TextStyle(
+              color: AppColors.income,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
         ],
       ),
     );

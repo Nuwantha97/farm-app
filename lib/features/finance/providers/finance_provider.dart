@@ -7,14 +7,19 @@ class FinanceProvider extends ChangeNotifier {
 
   List<Expense> _commonExpenses = [];
   List<Expense> _cropExpenses = [];
+  List<Map<String, dynamic>> _incomeEntries = [];
   String? _errorMessage;
   double _totalExpenses = 0.0;
+  double _totalIncome = 0.0;
 
   List<Expense> get commonExpenses => _commonExpenses;
   List<Expense> get cropExpenses => _cropExpenses;
   List<Expense> get allExpenses => [..._commonExpenses, ..._cropExpenses];
+  List<Map<String, dynamic>> get incomeEntries => _incomeEntries;
   String? get errorMessage => _errorMessage;
   double get totalExpenses => _totalExpenses;
+  double get totalIncome => _totalIncome;
+  double get totalProfit => _totalIncome - _totalExpenses;
 
   /// Load common expenses
   void loadCommonExpenses(String userId) {
@@ -46,6 +51,20 @@ class FinanceProvider extends ChangeNotifier {
     );
   }
 
+  /// Load income entries (sold/consumed crops)
+  void loadIncomeEntries(String userId) {
+    _service.getIncomeEntries(userId).listen(
+      (entries) {
+        _incomeEntries = entries;
+        notifyListeners();
+      },
+      onError: (e) {
+        _errorMessage = 'Failed to load income entries';
+        notifyListeners();
+      },
+    );
+  }
+
   /// Fetch total expenses
   Future<void> fetchTotalExpenses(String userId) async {
     try {
@@ -53,6 +72,17 @@ class FinanceProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to calculate total';
+      notifyListeners();
+    }
+  }
+
+  /// Fetch total income
+  Future<void> fetchTotalIncome(String userId) async {
+    try {
+      _totalIncome = await _service.getTotalIncome(userId);
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to calculate income';
       notifyListeners();
     }
   }

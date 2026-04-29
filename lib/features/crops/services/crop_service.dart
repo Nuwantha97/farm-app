@@ -81,4 +81,38 @@ class CropService {
       debugPrint('Auto-transition error: $e');
     }
   }
+
+  /// Get total income from sold and consumed crops
+  Future<double> getTotalIncome(String userId) async {
+    double total = 0.0;
+
+    // Sum soldAmount from crops with status 'sold'
+    final soldSnap = await _cropsRef(userId)
+        .where('status', isEqualTo: 'sold')
+        .get();
+    for (var doc in soldSnap.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      total += (data['soldAmount'] ?? 0.0).toDouble();
+    }
+
+    // Sum consumedEstimatedAmount from crops with status 'consumed'
+    final consumedSnap = await _cropsRef(userId)
+        .where('status', isEqualTo: 'consumed')
+        .get();
+    for (var doc in consumedSnap.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      total += (data['consumedEstimatedAmount'] ?? 0.0).toDouble();
+    }
+
+    return total;
+  }
+
+  /// Get a stream of crops that have income (sold or consumed)
+  Stream<List<Crop>> getIncomeCrops(String userId) {
+    return _cropsRef(userId)
+        .where('status', whereIn: ['sold', 'consumed'])
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => Crop.fromFirestore(doc)).toList());
+  }
 }
