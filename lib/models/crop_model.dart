@@ -10,6 +10,12 @@ class Crop {
   final double? consumedEstimatedAmount;
   final DateTime createdAt;
 
+  // Sync tracking fields
+  final String syncStatus; // 'pending', 'synced', 'modified', 'deleted'
+  final DateTime updatedAt;
+  final String localId; // UUID for local identity
+  final String? firebaseId; // Firestore document ID
+
   Crop({
     required this.id,
     required this.name,
@@ -19,8 +25,15 @@ class Crop {
     this.soldAmount,
     this.consumedEstimatedAmount,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    this.syncStatus = 'pending',
+    DateTime? updatedAt,
+    String? localId,
+    this.firebaseId,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now(),
+        localId = localId ?? id;
 
+  /// Deserialize from Firestore document (used for sync pull).
   factory Crop.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return Crop(
@@ -42,22 +55,74 @@ class Crop {
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
+      syncStatus: 'synced',
+      updatedAt: data['updatedAt'] != null
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      localId: data['localId'] ?? doc.id,
+      firebaseId: doc.id,
     );
   }
 
+  /// Deserialize from Hive map (uses ISO date strings).
+  factory Crop.fromMap(Map<String, dynamic> map) {
+    return Crop(
+      id: map['id'] ?? '',
+      name: map['name'] ?? '',
+      status: map['status'] ?? 'planning',
+      plantedDate:
+          map['plantedDate'] != null ? DateTime.parse(map['plantedDate']) : null,
+      harvestedDate: map['harvestedDate'] != null
+          ? DateTime.parse(map['harvestedDate'])
+          : null,
+      soldAmount: map['soldAmount'] != null
+          ? (map['soldAmount'] as num).toDouble()
+          : null,
+      consumedEstimatedAmount: map['consumedEstimatedAmount'] != null
+          ? (map['consumedEstimatedAmount'] as num).toDouble()
+          : null,
+      createdAt:
+          map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      syncStatus: map['syncStatus'] ?? 'pending',
+      updatedAt:
+          map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
+      localId: map['localId'],
+      firebaseId: map['firebaseId'],
+    );
+  }
+
+  /// Serialize for Firestore (used for sync push).
   Map<String, dynamic> toMap() {
     return {
       'name': name,
       'status': status,
-      'plantedDate': plantedDate != null
-          ? Timestamp.fromDate(plantedDate!)
-          : null,
-      'harvestedDate': harvestedDate != null
-          ? Timestamp.fromDate(harvestedDate!)
-          : null,
+      'plantedDate':
+          plantedDate != null ? Timestamp.fromDate(plantedDate!) : null,
+      'harvestedDate':
+          harvestedDate != null ? Timestamp.fromDate(harvestedDate!) : null,
       'soldAmount': soldAmount,
       'consumedEstimatedAmount': consumedEstimatedAmount,
       'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      'localId': localId,
+    };
+  }
+
+  /// Serialize for Hive storage (uses ISO date strings).
+  Map<String, dynamic> toHiveMap() {
+    return {
+      'id': id,
+      'name': name,
+      'status': status,
+      'plantedDate': plantedDate?.toIso8601String(),
+      'harvestedDate': harvestedDate?.toIso8601String(),
+      'soldAmount': soldAmount,
+      'consumedEstimatedAmount': consumedEstimatedAmount,
+      'createdAt': createdAt.toIso8601String(),
+      'syncStatus': syncStatus,
+      'updatedAt': updatedAt.toIso8601String(),
+      'localId': localId,
+      'firebaseId': firebaseId,
     };
   }
 
@@ -69,6 +134,10 @@ class Crop {
     DateTime? harvestedDate,
     double? soldAmount,
     double? consumedEstimatedAmount,
+    String? syncStatus,
+    DateTime? updatedAt,
+    String? localId,
+    String? firebaseId,
   }) {
     return Crop(
       id: id ?? this.id,
@@ -77,8 +146,13 @@ class Crop {
       plantedDate: plantedDate ?? this.plantedDate,
       harvestedDate: harvestedDate ?? this.harvestedDate,
       soldAmount: soldAmount ?? this.soldAmount,
-      consumedEstimatedAmount: consumedEstimatedAmount ?? this.consumedEstimatedAmount,
+      consumedEstimatedAmount:
+          consumedEstimatedAmount ?? this.consumedEstimatedAmount,
       createdAt: createdAt,
+      syncStatus: syncStatus ?? this.syncStatus,
+      updatedAt: updatedAt ?? this.updatedAt,
+      localId: localId ?? this.localId,
+      firebaseId: firebaseId ?? this.firebaseId,
     );
   }
 }

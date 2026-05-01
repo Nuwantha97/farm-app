@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../models/expense_model.dart';
 import '../services/expense_service.dart';
@@ -12,6 +14,10 @@ class FinanceProvider extends ChangeNotifier {
   double _totalExpenses = 0.0;
   double _totalIncome = 0.0;
 
+  StreamSubscription<List<Expense>>? _commonSub;
+  StreamSubscription<List<Expense>>? _cropSub;
+  StreamSubscription<List<Map<String, dynamic>>>? _incomeSub;
+
   List<Expense> get commonExpenses => _commonExpenses;
   List<Expense> get cropExpenses => _cropExpenses;
   List<Expense> get allExpenses => [..._commonExpenses, ..._cropExpenses];
@@ -21,9 +27,10 @@ class FinanceProvider extends ChangeNotifier {
   double get totalIncome => _totalIncome;
   double get totalProfit => _totalIncome - _totalExpenses;
 
-  /// Load common expenses
+  /// Load common expenses.
   void loadCommonExpenses(String userId) {
-    _service.getCommonExpenses(userId).listen(
+    _commonSub?.cancel();
+    _commonSub = _service.getCommonExpenses(userId).listen(
       (expenses) {
         _commonExpenses = expenses;
         _calculateTotal();
@@ -36,9 +43,11 @@ class FinanceProvider extends ChangeNotifier {
     );
   }
 
-  /// Load crop expenses for a specific crop
+  /// Load crop expenses for a specific crop.
   void loadCropExpenses(String userId, String cropId, {String? cropName}) {
-    _service.getCropExpenses(userId, cropId, cropName: cropName).listen(
+    _cropSub?.cancel();
+    _cropSub =
+        _service.getCropExpenses(userId, cropId, cropName: cropName).listen(
       (expenses) {
         _cropExpenses = expenses;
         _calculateTotal();
@@ -51,9 +60,10 @@ class FinanceProvider extends ChangeNotifier {
     );
   }
 
-  /// Load income entries (sold/consumed crops)
+  /// Load income entries (sold/consumed crops).
   void loadIncomeEntries(String userId) {
-    _service.getIncomeEntries(userId).listen(
+    _incomeSub?.cancel();
+    _incomeSub = _service.getIncomeEntries(userId).listen(
       (entries) {
         _incomeEntries = entries;
         notifyListeners();
@@ -65,7 +75,7 @@ class FinanceProvider extends ChangeNotifier {
     );
   }
 
-  /// Fetch total expenses
+  /// Fetch total expenses.
   Future<void> fetchTotalExpenses(String userId) async {
     try {
       _totalExpenses = await _service.getTotalExpenses(userId);
@@ -76,7 +86,7 @@ class FinanceProvider extends ChangeNotifier {
     }
   }
 
-  /// Fetch total income
+  /// Fetch total income.
   Future<void> fetchTotalIncome(String userId) async {
     try {
       _totalIncome = await _service.getTotalIncome(userId);
@@ -146,5 +156,13 @@ class FinanceProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _commonSub?.cancel();
+    _cropSub?.cancel();
+    _incomeSub?.cancel();
+    super.dispose();
   }
 }

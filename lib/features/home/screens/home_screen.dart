@@ -16,7 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().user?.uid;
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
       context.read<DashboardProvider>().loadDashboard(userId);
     }
@@ -25,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
-    final userName = authProvider.user?.email?.split('@').first ?? 'Farmer';
+    final userName = authProvider.user?.email.split('@').first ?? 'Farmer';
 
     return Scaffold(
       body: CustomScrollView(
@@ -96,17 +96,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             child: IconButton(
                               icon: const Icon(
-                                Icons.logout,
+                                Icons.settings_outlined,
                                 color: Colors.white,
                               ),
-                              onPressed: () async {
-                                await context.read<AuthProvider>().logout();
-                                if (context.mounted) {
-                                  Navigator.pushReplacementNamed(
-                                    context,
-                                    AppRoutes.login,
-                                  );
-                                }
+                              onPressed: () {
+                                Navigator.pushNamed(
+                                    context, AppRoutes.settings);
                               },
                             ),
                           ),

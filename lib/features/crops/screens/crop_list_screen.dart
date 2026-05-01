@@ -17,7 +17,7 @@ class _CropListScreenState extends State<CropListScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().user?.uid;
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
       context.read<CropProvider>().loadCrops(userId);
     }

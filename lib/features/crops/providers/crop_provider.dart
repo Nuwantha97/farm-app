@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../models/crop_model.dart';
 import '../services/crop_service.dart';
@@ -8,34 +10,35 @@ class CropProvider extends ChangeNotifier {
   List<Crop> _crops = [];
   bool _isLoading = false;
   String? _errorMessage;
+  StreamSubscription<List<Crop>>? _cropsSubscription;
 
   List<Crop> get crops => _crops;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  int get activeCropCount => _crops.where((c) => c.status == 'growing' || c.status == 'planted').length;
+  int get activeCropCount =>
+      _crops.where((c) => c.status == 'growing' || c.status == 'planted').length;
 
-  /// Listen to crops for a user
+  /// Listen to crops for a user (reactive from Hive).
   void loadCrops(String userId) {
     _isLoading = true;
     notifyListeners();
 
     // Auto-transition planted crops to growing after 1 day
     _service.autoTransitionPlantedCrops(userId).then((_) {
-      _service
-          .getCrops(userId)
-          .listen(
-            (cropList) {
-              _crops = cropList;
-              _isLoading = false;
-              notifyListeners();
-            },
-            onError: (e) {
-              _errorMessage = 'Failed to load crops';
-              _isLoading = false;
-              notifyListeners();
-            },
-          );
+      _cropsSubscription?.cancel();
+      _cropsSubscription = _service.getCrops(userId).listen(
+        (cropList) {
+          _crops = cropList;
+          _isLoading = false;
+          notifyListeners();
+        },
+        onError: (e) {
+          _errorMessage = 'Failed to load crops';
+          _isLoading = false;
+          notifyListeners();
+        },
+      );
     });
   }
 
@@ -79,5 +82,11 @@ class CropProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _cropsSubscription?.cancel();
+    super.dispose();
   }
 }

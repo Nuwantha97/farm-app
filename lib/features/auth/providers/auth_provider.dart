@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../../../models/user_model.dart';
 import '../services/auth_service.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -7,38 +7,38 @@ class AuthProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   String? _errorMessage;
-  User? _user;
+  LocalUser? _user;
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  User? get user => _user;
+  LocalUser? get user => _user;
   bool get isAuthenticated => _user != null;
+  String? get currentUserId => _user?.id;
+  String? get firebaseUid => _user?.firebaseUid;
 
   AuthProvider() {
-    _user = _authService.currentUser;
-    _authService.authStateChanges.listen((user) {
-      _user = user;
-      notifyListeners();
-    });
+    // Try to restore session from Hive on app start
+    _user = _authService.restoreSession();
   }
 
-  Future<bool> login(String email, String password) async {
+  Future<bool> login(String email, String password,
+      {bool syncEnabled = false}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _user = await _authService.login(email, password);
+      _user = await _authService.login(
+        email,
+        password,
+        syncEnabled: syncEnabled,
+      );
+      await _authService.saveSession(email.toLowerCase().trim());
       _isLoading = false;
       notifyListeners();
       return true;
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _getErrorMessage(e.code);
-      _isLoading = false;
-      notifyListeners();
-      return false;
     } catch (e) {
-      _errorMessage = 'An unexpected error occurred';
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -52,49 +52,49 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       _user = await _authService.register(email, password);
+      await _authService.saveSession(email.toLowerCase().trim());
       _isLoading = false;
       notifyListeners();
       return true;
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _getErrorMessage(e.code);
-      _isLoading = false;
-      notifyListeners();
-      return false;
     } catch (e) {
-      _errorMessage = 'An unexpected error occurred';
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return false;
     }
   }
 
-  Future<void> logout() async {
-    await _authService.logout();
+  Future<void> logout({bool syncEnabled = false}) async {
+    await _authService.logout(syncEnabled: syncEnabled);
+    await _authService.clearSession();
     _user = null;
     notifyListeners();
+  }
+
+  Future<bool> deleteAccount(String password) async {
+    if (_user == null) return false;
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _authService.deleteAccount(_user!.email, password);
+      await _authService.clearSession();
+      _user = null;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
   }
 
   void clearError() {
     _errorMessage = null;
     notifyListeners();
-  }
-
-  String _getErrorMessage(String code) {
-    switch (code) {
-      case 'user-not-found':
-        return 'No account found with this email';
-      case 'wrong-password':
-        return 'Incorrect password';
-      case 'email-already-in-use':
-        return 'An account already exists with this email';
-      case 'weak-password':
-        return 'Password is too weak';
-      case 'invalid-email':
-        return 'Invalid email address';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again later';
-      default:
-        return 'Authentication failed. Please try again';
-    }
   }
 }

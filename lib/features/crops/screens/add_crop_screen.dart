@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/widgets/custom_button.dart';
@@ -129,7 +128,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
 
     setState(() => _isLoading = true);
 
-    final userId = context.read<AuthProvider>().user?.uid;
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId == null) return;
 
     final cropProvider = context.read<CropProvider>();
@@ -141,10 +140,10 @@ class _AddCropScreenState extends State<AddCropScreen> {
         'status': _selectedStatus,
       };
       if (_plantedDate != null) {
-        data['plantedDate'] = Timestamp.fromDate(_plantedDate!);
+        data['plantedDate'] = _plantedDate!.toIso8601String();
       }
       if (_showHarvestedDate && _harvestedDate != null) {
-        data['harvestedDate'] = Timestamp.fromDate(_harvestedDate!);
+        data['harvestedDate'] = _harvestedDate!.toIso8601String();
       } else {
         data['harvestedDate'] = null;
       }

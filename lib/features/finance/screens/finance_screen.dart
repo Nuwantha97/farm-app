@@ -21,7 +21,7 @@ class _FinanceScreenState extends State<FinanceScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    final userId = context.read<AuthProvider>().user?.uid;
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
       final financeProvider = context.read<FinanceProvider>();
       financeProvider.loadCommonExpenses(userId);
