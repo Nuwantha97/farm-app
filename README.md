@@ -244,9 +244,3 @@ users/{userId}/
                                                       ↓
                                             [Deleted locally] → deleted → [Deleted from cloud] → removed
 ```
-
----
-
-## 📄 License
-
-This project is private and not published to pub.dev.
