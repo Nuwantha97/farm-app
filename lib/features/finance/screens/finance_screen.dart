@@ -63,6 +63,7 @@ class _FinanceScreenState extends State<FinanceScreen>
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'financeFab',
         onPressed: () {
           Navigator.pushNamed(context, AppRoutes.addExpense);
         },
@@ -216,10 +217,9 @@ class _FinanceScreenState extends State<FinanceScreen>
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: (isProfitable
-                              ? AppColors.success
-                              : AppColors.error)
-                          .withValues(alpha: 0.3),
+                      color:
+                          (isProfitable ? AppColors.success : AppColors.error)
+                              .withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -234,9 +234,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
-                        isProfitable
-                            ? Icons.emoji_events
-                            : Icons.warning_amber,
+                        isProfitable ? Icons.emoji_events : Icons.warning_amber,
                         color: Colors.white,
                         size: 28,
                       ),
@@ -488,10 +486,9 @@ class _FinanceScreenState extends State<FinanceScreen>
               children: [
                 Text(
                   entry['name'] ?? '',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontSize: 15),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontSize: 15),
                 ),
                 Row(
                   children: [
@@ -518,10 +515,9 @@ class _FinanceScreenState extends State<FinanceScreen>
                       entry['date'] != null
                           ? dateFormat.format(entry['date'] as DateTime)
                           : '',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(fontSize: 12),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                     ),
                   ],
                 ),

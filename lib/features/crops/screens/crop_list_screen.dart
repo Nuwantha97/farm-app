@@ -127,6 +127,7 @@ class _CropListScreenState extends State<CropListScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'cropFab',
         onPressed: () {
           Navigator.pushNamed(context, AppRoutes.addCrop);
         },
