@@ -17,10 +17,14 @@ class _CropListScreenState extends State<CropListScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().currentUserId;
-    if (userId != null) {
-      context.read<CropProvider>().loadCrops(userId);
-    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = context.read<AuthProvider>().currentUserId;
+
+      if (userId != null) {
+        context.read<CropProvider>().loadCrops(userId);
+      }
+    });
   }
 
   Color _statusColor(String status) {
