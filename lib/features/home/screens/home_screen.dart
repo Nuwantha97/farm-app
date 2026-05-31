@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
+import 'package:marquee/marquee.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,10 +17,14 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().currentUserId;
-    if (userId != null) {
-      context.read<DashboardProvider>().loadDashboard(userId);
-    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = context.read<AuthProvider>().currentUserId;
+
+      if (userId != null) {
+        context.read<DashboardProvider>().loadDashboard(userId);
+      }
+    });
   }
 
   @override
@@ -52,27 +57,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome back,',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 14,
+                      Expanded(                          // <-- add this
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Welcome back,',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            userName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
+                            const SizedBox(height: 2),
+                            SizedBox(
+                              height: 32,
+                              child: ExcludeSemantics(   // <-- add this too, fixes the semantics error
+                                child: Marquee(
+                                  text: userName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  scrollAxis: Axis.horizontal,
+                                  blankSpace: 50,
+                                  velocity: 50,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 12),        // <-- add spacing so icons don't hug the text
                       Row(
                         children: [
                           Container(
@@ -101,7 +117,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               onPressed: () {
                                 Navigator.pushNamed(
-                                    context, AppRoutes.settings);
+                                  context,
+                                  AppRoutes.settings,
+                                );
                               },
                             ),
                           ),
