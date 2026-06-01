@@ -77,6 +77,27 @@ class SyncService {
     debugPrint('SyncService: Background pull complete');
   }
 
+  /// Immediate sync triggered after a CRUD operation or pull-to-refresh.
+  ///
+  /// Skips the 30-second cooldown but still respects the sync-enabled
+  /// setting and the [_isSyncing] guard.
+  Future<void> immediateSync(String localUserId) async {
+    if (_isSyncing) return;
+
+    final isSyncEnabled =
+        HiveService.settingsBox.get('isSyncEnabled', defaultValue: false);
+    if (isSyncEnabled != true) return;
+
+    final firebaseUid = _getFirebaseUid(localUserId);
+    if (firebaseUid == null) return;
+
+    final result = await fullSync(firebaseUid);
+    if (!result.hasErrors) {
+      _lastPullTime = DateTime.now();
+    }
+    debugPrint('SyncService: Immediate sync complete');
+  }
+
   // ── Full bidirectional sync ─────────────────────────────────
 
   /// Perform a full bidirectional sync.

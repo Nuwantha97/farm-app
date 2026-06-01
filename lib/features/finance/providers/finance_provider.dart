@@ -7,6 +7,12 @@ import '../services/expense_service.dart';
 
 class FinanceProvider extends ChangeNotifier {
   final ExpenseService _service = ExpenseService();
+  final SyncService _syncService = SyncService();
+
+  /// Fire-and-forget sync after a local CRUD operation.
+  void _triggerSync(String userId) {
+    _syncService.immediateSync(userId).catchError((_) {});
+  }
 
   List<Expense> _commonExpenses = [];
   List<Expense> _cropExpenses = [];
@@ -111,6 +117,7 @@ class FinanceProvider extends ChangeNotifier {
       String userId, String cropId, Expense expense) async {
     try {
       await _service.addCropExpense(userId, cropId, expense);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to add expense';
@@ -122,6 +129,7 @@ class FinanceProvider extends ChangeNotifier {
   Future<bool> addCommonExpense(String userId, Expense expense) async {
     try {
       await _service.addCommonExpense(userId, expense);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to add expense';
@@ -134,6 +142,7 @@ class FinanceProvider extends ChangeNotifier {
       String userId, String cropId, String expenseId) async {
     try {
       await _service.deleteCropExpense(userId, cropId, expenseId);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to delete expense';
@@ -145,6 +154,7 @@ class FinanceProvider extends ChangeNotifier {
   Future<bool> deleteCommonExpense(String userId, String expenseId) async {
     try {
       await _service.deleteCommonExpense(userId, expenseId);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to delete expense';
@@ -166,6 +176,13 @@ class FinanceProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Pull-to-refresh: sync with cloud and re-fetch totals.
+  Future<void> refresh(String userId) async {
+    await _syncService.immediateSync(userId);
+    await fetchTotalExpenses(userId);
+    await fetchTotalIncome(userId);
   }
 
   @override

@@ -7,6 +7,7 @@ import '../services/crop_service.dart';
 
 class CropProvider extends ChangeNotifier {
   final CropService _service = CropService();
+  final SyncService _syncService = SyncService();
 
   List<Crop> _crops = [];
   bool _isLoading = false;
@@ -16,6 +17,11 @@ class CropProvider extends ChangeNotifier {
   List<Crop> get crops => _crops;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  /// Fire-and-forget sync after a local CRUD operation.
+  void _triggerSync(String userId) {
+    _syncService.immediateSync(userId).catchError((_) {});
+  }
 
   int get activeCropCount =>
       _crops.where((c) => c.status == 'growing' || c.status == 'planted').length;
@@ -50,6 +56,7 @@ class CropProvider extends ChangeNotifier {
   Future<bool> addCrop(String userId, Crop crop) async {
     try {
       await _service.addCrop(userId, crop);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to add crop';
@@ -65,6 +72,7 @@ class CropProvider extends ChangeNotifier {
   ) async {
     try {
       await _service.updateCrop(userId, cropId, data);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to update crop';
@@ -76,6 +84,7 @@ class CropProvider extends ChangeNotifier {
   Future<bool> deleteCrop(String userId, String cropId) async {
     try {
       await _service.deleteCrop(userId, cropId);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to delete crop';
@@ -87,6 +96,12 @@ class CropProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Pull-to-refresh: sync with cloud and re-run auto-transitions.
+  Future<void> refresh(String userId) async {
+    await _service.autoTransitionPlantedCrops(userId);
+    await _syncService.immediateSync(userId);
   }
 
   @override

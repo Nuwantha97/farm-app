@@ -37,6 +37,13 @@ class _FinanceScreenState extends State<FinanceScreen>
     super.dispose();
   }
 
+  Future<void> _handleRefresh() async {
+    final userId = context.read<AuthProvider>().currentUserId;
+    if (userId != null) {
+      await context.read<FinanceProvider>().refresh(userId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,9 +86,12 @@ class _FinanceScreenState extends State<FinanceScreen>
         final profit = finance.totalProfit;
         final isProfitable = profit >= 0;
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+        return RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Summary cards row
@@ -326,6 +336,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                     .map((expense) => _expenseListItem(context, expense)),
             ],
           ),
+          ),
         );
       },
     );
@@ -334,39 +345,48 @@ class _FinanceScreenState extends State<FinanceScreen>
   Widget _buildIncomeTab() {
     return Consumer<FinanceProvider>(
       builder: (context, finance, _) {
-        if (finance.incomeEntries.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.monetization_on_outlined,
-                  size: 80,
-                  color: AppColors.textHint.withValues(alpha: 0.4),
+        return RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: finance.incomeEntries.isEmpty
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.monetization_on_outlined,
+                              size: 80,
+                              color: AppColors.textHint.withValues(alpha: 0.4),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No income recorded',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Mark crops as Sold or Consumed to track income',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: finance.incomeEntries.length,
+                  itemBuilder: (context, index) {
+                    return _incomeListItem(context, finance.incomeEntries[index]);
+                  },
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'No income recorded',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Mark crops as Sold or Consumed to track income',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: finance.incomeEntries.length,
-          itemBuilder: (context, index) {
-            return _incomeListItem(context, finance.incomeEntries[index]);
-          },
         );
       },
     );
@@ -375,39 +395,48 @@ class _FinanceScreenState extends State<FinanceScreen>
   Widget _buildCommonExpensesTab() {
     return Consumer<FinanceProvider>(
       builder: (context, finance, _) {
-        if (finance.commonExpenses.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  size: 80,
-                  color: AppColors.textHint.withValues(alpha: 0.4),
+        return RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: finance.commonExpenses.isEmpty
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 80,
+                              color: AppColors.textHint.withValues(alpha: 0.4),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No common expenses',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add farm-wide expenses here',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: finance.commonExpenses.length,
+                  itemBuilder: (context, index) {
+                    return _expenseListItem(context, finance.commonExpenses[index]);
+                  },
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'No common expenses',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Add farm-wide expenses here',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: finance.commonExpenses.length,
-          itemBuilder: (context, index) {
-            return _expenseListItem(context, finance.commonExpenses[index]);
-          },
         );
       },
     );

@@ -27,14 +27,24 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _handleRefresh() async {
+    final userId = context.read<AuthProvider>().currentUserId;
+    if (userId != null) {
+      await context.read<DashboardProvider>().refresh(userId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final userName = authProvider.user?.email.split('@').first ?? 'Farmer';
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           // Custom App Bar
           SliverToBoxAdapter(
             child: Container(
@@ -291,7 +301,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

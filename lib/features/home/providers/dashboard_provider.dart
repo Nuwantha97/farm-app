@@ -77,6 +77,14 @@ class DashboardProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Pull-to-refresh: sync with cloud and re-fetch all dashboard data.
+  Future<void> refresh(String userId) async {
+    await SyncService().immediateSync(userId);
+    _totalExpenses = await _expenseService.getTotalExpenses(userId);
+    _totalIncome = await _expenseService.getTotalIncome(userId);
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _cropsSub?.cancel();
