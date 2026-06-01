@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../models/expense_model.dart';
 import '../services/expense_service.dart';
 
@@ -41,6 +42,9 @@ class FinanceProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+
+    // Fetch from Firebase in background (if sync enabled)
+    SyncService().backgroundPull(userId);
   }
 
   /// Load crop expenses for a specific crop.
@@ -58,6 +62,9 @@ class FinanceProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+
+    // Fetch from Firebase in background (if sync enabled)
+    SyncService().backgroundPull(userId);
   }
 
   /// Load income entries (sold/consumed crops).
@@ -73,6 +80,9 @@ class FinanceProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+
+    // Fetch from Firebase in background (if sync enabled)
+    SyncService().backgroundPull(userId);
   }
 
   /// Fetch total expenses.

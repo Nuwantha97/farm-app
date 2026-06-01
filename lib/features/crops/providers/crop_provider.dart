@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../models/crop_model.dart';
 import '../services/crop_service.dart';
 
@@ -39,6 +40,10 @@ class CropProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
+
+      // Fetch from Firebase in background and merge into Hive.
+      // The Hive listener above will automatically pick up changes.
+      SyncService().backgroundPull(userId);
     });
   }
 

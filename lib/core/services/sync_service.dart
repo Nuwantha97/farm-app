@@ -29,6 +29,8 @@ class SyncResult {
 /// Sync only runs when user has enabled sync AND internet is available.
 class SyncService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static bool _isSyncing = false;
+  static DateTime? _lastPullTime;
 
   /// Check internet connectivity.
   Future<bool> isOnline() async {
@@ -36,14 +38,58 @@ class SyncService {
     return !result.contains(ConnectivityResult.none);
   }
 
+  /// Get firebaseUid from local userId by scanning the users box.
+  String? _getFirebaseUid(String localUserId) {
+    for (final entry in HiveService.usersBox.toMap().entries) {
+      final data = Map<String, dynamic>.from(entry.value);
+      if (data['id'] == localUserId) {
+        return data['firebaseUid'] as String?;
+      }
+    }
+    return null;
+  }
+
+  /// Background pull: fetch from Firebase and merge into Hive.
+  ///
+  /// Called by providers when loading data. Only runs if sync is
+  /// enabled, internet is available, and not already syncing.
+  /// Includes a 30-second cooldown to avoid excessive Firebase reads.
+  Future<void> backgroundPull(String localUserId) async {
+    if (_isSyncing) return;
+
+    // Cooldown: don't pull more than once per 30 seconds
+    if (_lastPullTime != null &&
+        DateTime.now().difference(_lastPullTime!).inSeconds < 30) {
+      return;
+    }
+
+    final isSyncEnabled =
+        HiveService.settingsBox.get('isSyncEnabled', defaultValue: false);
+    if (isSyncEnabled != true) return;
+
+    final firebaseUid = _getFirebaseUid(localUserId);
+    if (firebaseUid == null) return;
+
+    final result = await fullSync(firebaseUid);
+    if (!result.hasErrors) {
+      _lastPullTime = DateTime.now();
+    }
+    debugPrint('SyncService: Background pull complete');
+  }
+
   // ── Full bidirectional sync ─────────────────────────────────
 
   /// Perform a full bidirectional sync.
   Future<SyncResult> fullSync(String firebaseUid) async {
+    if (_isSyncing) {
+      return SyncResult();
+    }
+
     if (!await isOnline()) {
       return SyncResult(errors: ['No internet connection']);
     }
 
+    _isSyncing = true;
     int pushed = 0;
     int pulled = 0;
     int conflicts = 0;
@@ -80,6 +126,8 @@ class SyncService {
     } catch (e) {
       errors.add('Sync failed: $e');
       debugPrint('SyncService: Sync error: $e');
+    } finally {
+      _isSyncing = false;
     }
 
     return SyncResult(
@@ -240,7 +288,7 @@ class SyncService {
       }
     }
 
-    // 2. PULL: Download remote crops not in local
+    // 2. PULL: Download new remote crops or update stale local copies
     try {
       final remoteSnap = await cropsRef.get();
       for (final doc in remoteSnap.docs) {
@@ -256,6 +304,29 @@ class SyncService {
             Map<String, dynamic>.from(crop.toHiveMap()),
           );
           pulled++;
+        } else {
+          // Existing item — update if remote is newer and local hasn't been modified
+          final localData = Map<String, dynamic>.from(
+              HiveService.cropsBox.get(localKey)!);
+          final localSyncStatus = localData['syncStatus'] ?? 'synced';
+
+          if (localSyncStatus == 'synced') {
+            final localUpdated = localData['updatedAt'] != null
+                ? DateTime.parse(localData['updatedAt'])
+                : DateTime(2000);
+            final remoteUpdated = remoteData['updatedAt'] != null
+                ? (remoteData['updatedAt'] as Timestamp).toDate()
+                : DateTime(2000);
+
+            if (remoteUpdated.isAfter(localUpdated)) {
+              final crop = Crop.fromFirestore(doc);
+              await HiveService.cropsBox.put(
+                localKey,
+                Map<String, dynamic>.from(crop.toHiveMap()),
+              );
+              pulled++;
+            }
+          }
         }
       }
     } catch (e) {
@@ -329,7 +400,7 @@ class SyncService {
         }
       }
 
-      // PULL remote expenses
+      // PULL remote expenses (new + stale updates)
       try {
         final remoteSnap = await expensesRef.get();
         for (final doc in remoteSnap.docs) {
@@ -345,6 +416,29 @@ class SyncService {
               Map<String, dynamic>.from(expense.toHiveMap()),
             );
             pulled++;
+          } else {
+            final localData = Map<String, dynamic>.from(
+                HiveService.expensesBox.get(localKey)!);
+            final localSyncStatus = localData['syncStatus'] ?? 'synced';
+
+            if (localSyncStatus == 'synced') {
+              final localUpdated = localData['updatedAt'] != null
+                  ? DateTime.parse(localData['updatedAt'])
+                  : DateTime(2000);
+              final remoteUpdated = remoteData['updatedAt'] != null
+                  ? (remoteData['updatedAt'] as Timestamp).toDate()
+                  : DateTime(2000);
+
+              if (remoteUpdated.isAfter(localUpdated)) {
+                final expense =
+                    Expense.fromFirestore(doc, cropId: cropFirebaseId);
+                await HiveService.expensesBox.put(
+                  localKey,
+                  Map<String, dynamic>.from(expense.toHiveMap()),
+                );
+                pulled++;
+              }
+            }
           }
         }
       } catch (e) {
@@ -406,7 +500,7 @@ class SyncService {
       }
     }
 
-    // PULL
+    // PULL (new + stale updates)
     try {
       final remoteSnap = await commonRef.get();
       for (final doc in remoteSnap.docs) {
@@ -421,6 +515,28 @@ class SyncService {
             Map<String, dynamic>.from(expense.toHiveMap()),
           );
           pulled++;
+        } else {
+          final localData = Map<String, dynamic>.from(
+              HiveService.commonExpensesBox.get(localKey)!);
+          final localSyncStatus = localData['syncStatus'] ?? 'synced';
+
+          if (localSyncStatus == 'synced') {
+            final localUpdated = localData['updatedAt'] != null
+                ? DateTime.parse(localData['updatedAt'])
+                : DateTime(2000);
+            final remoteUpdated = remoteData['updatedAt'] != null
+                ? (remoteData['updatedAt'] as Timestamp).toDate()
+                : DateTime(2000);
+
+            if (remoteUpdated.isAfter(localUpdated)) {
+              final expense = Expense.fromFirestore(doc);
+              await HiveService.commonExpensesBox.put(
+                localKey,
+                Map<String, dynamic>.from(expense.toHiveMap()),
+              );
+              pulled++;
+            }
+          }
         }
       }
     } catch (e) {

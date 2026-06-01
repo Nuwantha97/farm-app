@@ -35,7 +35,7 @@ class CropService {
   /// Get all crops for a user as a stream (reactive via ValueListenable).
   Stream<List<Crop>> getCrops(String userId) {
     // Create a stream from Hive's ValueListenable
-    final controller = StreamController<List<Crop>>.broadcast();
+    final controller = StreamController<List<Crop>>();
 
     // Emit initial value
     controller.add(_getCropsList(userId));
@@ -165,7 +165,7 @@ class CropService {
 
   /// Get a stream of crops that have income (sold or consumed).
   Stream<List<Crop>> getIncomeCrops(String userId) {
-    final controller = StreamController<List<Crop>>.broadcast();
+    final controller = StreamController<List<Crop>>();
 
     controller.add(_getIncomeCropsList(userId));
 

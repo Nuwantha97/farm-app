@@ -64,7 +64,7 @@ class ExpenseService {
   /// Get all expenses for a specific crop as a stream.
   Stream<List<Expense>> getCropExpenses(String userId, String cropId,
       {String? cropName}) {
-    final controller = StreamController<List<Expense>>.broadcast();
+    final controller = StreamController<List<Expense>>();
     controller.add(_getCropExpensesList(userId, cropId, cropName: cropName));
 
     void listener() {
@@ -104,7 +104,7 @@ class ExpenseService {
 
   /// Get all common expenses as a stream.
   Stream<List<Expense>> getCommonExpenses(String userId) {
-    final controller = StreamController<List<Expense>>.broadcast();
+    final controller = StreamController<List<Expense>>();
     controller.add(_getCommonExpensesList(userId));
 
     void listener() {
@@ -192,7 +192,7 @@ class ExpenseService {
 
   /// Get income entries (sold/consumed crops) as a stream.
   Stream<List<Map<String, dynamic>>> getIncomeEntries(String userId) {
-    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
+    final controller = StreamController<List<Map<String, dynamic>>>();
     controller.add(_getIncomeEntriesList(userId));
 
     void listener() {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../features/crops/services/crop_service.dart';
 import '../../../features/finance/services/expense_service.dart';
 
@@ -64,6 +65,9 @@ class DashboardProvider extends ChangeNotifier {
           notifyListeners();
         })
         .catchError((_) {});
+
+    // Fetch from Firebase in background (if sync enabled)
+    SyncService().backgroundPull(userId);
   }
 
   /// Refresh expenses total.
