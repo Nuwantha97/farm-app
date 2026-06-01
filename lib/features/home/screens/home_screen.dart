@@ -69,21 +69,40 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            SizedBox(
-                              height: 32,
-                              child: ExcludeSemantics(
-                                child: Marquee(
-                                  text: userName,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                const textStyle = TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                );
+
+                                // Measure if the text fits
+                                final textPainter = TextPainter(
+                                  text: TextSpan(text: userName, style: textStyle),
+                                  maxLines: 1,
+                                  textDirection: TextDirection.ltr,
+                                )..layout(maxWidth: double.infinity);
+
+                                final textFits = textPainter.width <= constraints.maxWidth;
+
+                                if (textFits) {
+                                  return Text(userName, style: textStyle);
+                                }
+
+                                return SizedBox(
+                                  height: 32,
+                                  child: ExcludeSemantics(
+                                    child: Marquee(
+                                      text: userName,
+                                      style: textStyle,
+                                      scrollAxis: Axis.horizontal,
+                                      blankSpace: 50,
+                                      velocity: 50,
+                                    ),
                                   ),
-                                  scrollAxis: Axis.horizontal,
-                                  blankSpace: 50,
-                                  velocity: 50,
-                                ),
-                              ),
+                                );
+                              },
                             ),
                           ],
                         ),
