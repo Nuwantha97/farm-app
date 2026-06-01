@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../features/crops/services/crop_service.dart';
 import '../../../features/finance/services/expense_service.dart';
 
@@ -12,6 +15,8 @@ class DashboardProvider extends ChangeNotifier {
   double _totalIncome = 0.0;
   bool _isLoading = false;
 
+  StreamSubscription? _cropsSub;
+
   int get totalCrops => _totalCrops;
   int get activeCrops => _activeCrops;
   double get totalExpenses => _totalExpenses;
@@ -19,30 +24,28 @@ class DashboardProvider extends ChangeNotifier {
   double get totalProfit => _totalIncome - _totalExpenses;
   bool get isLoading => _isLoading;
 
-  /// Load dashboard data
+  /// Load dashboard data from Hive.
   void loadDashboard(String userId) {
     _isLoading = true;
     notifyListeners();
 
     // Auto-transition planted crops to growing after 1 day, then listen
     _cropService.autoTransitionPlantedCrops(userId).then((_) {
-      // Listen to crops for counts
-      _cropService
-          .getCrops(userId)
-          .listen(
-            (crops) {
-              _totalCrops = crops.length;
-              _activeCrops = crops
-                  .where((c) => c.status == 'growing' || c.status == 'planted')
-                  .length;
-              _isLoading = false;
-              notifyListeners();
-            },
-            onError: (e) {
-              _isLoading = false;
-              notifyListeners();
-            },
-          );
+      _cropsSub?.cancel();
+      _cropsSub = _cropService.getCrops(userId).listen(
+        (crops) {
+          _totalCrops = crops.length;
+          _activeCrops = crops
+              .where((c) => c.status == 'growing' || c.status == 'planted')
+              .length;
+          _isLoading = false;
+          notifyListeners();
+        },
+        onError: (e) {
+          _isLoading = false;
+          notifyListeners();
+        },
+      );
     });
 
     // Fetch total expenses
@@ -62,12 +65,29 @@ class DashboardProvider extends ChangeNotifier {
           notifyListeners();
         })
         .catchError((_) {});
+
+    // Fetch from Firebase in background (if sync enabled)
+    SyncService().backgroundPull(userId);
   }
 
-  /// Refresh expenses total
+  /// Refresh expenses total.
   Future<void> refreshExpenses(String userId) async {
     _totalExpenses = await _expenseService.getTotalExpenses(userId);
     _totalIncome = await _expenseService.getTotalIncome(userId);
     notifyListeners();
+  }
+
+  /// Pull-to-refresh: sync with cloud and re-fetch all dashboard data.
+  Future<void> refresh(String userId) async {
+    await SyncService().immediateSync(userId);
+    _totalExpenses = await _expenseService.getTotalExpenses(userId);
+    _totalIncome = await _expenseService.getTotalIncome(userId);
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _cropsSub?.cancel();
+    super.dispose();
   }
 }

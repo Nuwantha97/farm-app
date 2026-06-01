@@ -17,9 +17,20 @@ class _CropListScreenState extends State<CropListScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().user?.uid;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = context.read<AuthProvider>().currentUserId;
+
+      if (userId != null) {
+        context.read<CropProvider>().loadCrops(userId);
+      }
+    });
+  }
+
+  Future<void> _handleRefresh() async {
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
-      context.read<CropProvider>().loadCrops(userId);
+      await context.read<CropProvider>().refresh(userId);
     }
   }
 
@@ -65,6 +76,7 @@ class _CropListScreenState extends State<CropListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text('My Crops'),
         actions: [
           IconButton(
@@ -85,44 +97,54 @@ class _CropListScreenState extends State<CropListScreen> {
             );
           }
 
-          if (cropProvider.crops.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.eco_outlined,
-                    size: 80,
-                    color: AppColors.textHint.withValues(alpha: 0.5),
+          return RefreshIndicator(
+            onRefresh: _handleRefresh,
+            child: cropProvider.crops.isEmpty
+                ? CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverFillRemaining(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.eco_outlined,
+                                size: 80,
+                                color: AppColors.textHint.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No crops yet',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tap + to add your first crop',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    itemCount: cropProvider.crops.length,
+                    itemBuilder: (context, index) {
+                      final crop = cropProvider.crops[index];
+                      return _buildCropCard(context, crop);
+                    },
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No crops yet',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Tap + to add your first crop',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            itemCount: cropProvider.crops.length,
-            itemBuilder: (context, index) {
-              final crop = cropProvider.crops[index];
-              return _buildCropCard(context, crop);
-            },
           );
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'cropFab',
         onPressed: () {
           Navigator.pushNamed(context, AppRoutes.addCrop);
         },

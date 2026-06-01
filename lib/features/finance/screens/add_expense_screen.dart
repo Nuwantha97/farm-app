@@ -76,7 +76,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     setState(() => _isLoading = true);
 
-    final userId = context.read<AuthProvider>().user?.uid;
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId == null) return;
 
     final financeProvider = context.read<FinanceProvider>();

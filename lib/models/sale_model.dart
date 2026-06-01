@@ -10,6 +10,12 @@ class Sale {
   final DateTime date;
   final DateTime createdAt;
 
+  // Sync tracking fields
+  final String syncStatus;
+  final DateTime updatedAt;
+  final String localId;
+  final String? firebaseId;
+
   Sale({
     required this.id,
     required this.cropId,
@@ -19,7 +25,13 @@ class Sale {
     this.unit = 'kg',
     required this.date,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    this.syncStatus = 'pending',
+    DateTime? updatedAt,
+    String? localId,
+    this.firebaseId,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now(),
+        localId = localId ?? id;
 
   factory Sale.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -36,6 +48,31 @@ class Sale {
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
+      syncStatus: 'synced',
+      updatedAt: data['updatedAt'] != null
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      localId: data['localId'] ?? doc.id,
+      firebaseId: doc.id,
+    );
+  }
+
+  factory Sale.fromMap(Map<String, dynamic> map) {
+    return Sale(
+      id: map['id'] ?? '',
+      cropId: map['cropId'] ?? '',
+      cropName: map['cropName'] ?? '',
+      amount: (map['amount'] ?? 0.0).toDouble(),
+      quantity: (map['quantity'] ?? 0.0).toDouble(),
+      unit: map['unit'] ?? 'kg',
+      date: map['date'] != null ? DateTime.parse(map['date']) : DateTime.now(),
+      createdAt:
+          map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      syncStatus: map['syncStatus'] ?? 'pending',
+      updatedAt:
+          map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
+      localId: map['localId'],
+      firebaseId: map['firebaseId'],
     );
   }
 
@@ -48,6 +85,25 @@ class Sale {
       'unit': unit,
       'date': Timestamp.fromDate(date),
       'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      'localId': localId,
+    };
+  }
+
+  Map<String, dynamic> toHiveMap() {
+    return {
+      'id': id,
+      'cropId': cropId,
+      'cropName': cropName,
+      'amount': amount,
+      'quantity': quantity,
+      'unit': unit,
+      'date': date.toIso8601String(),
+      'createdAt': createdAt.toIso8601String(),
+      'syncStatus': syncStatus,
+      'updatedAt': updatedAt.toIso8601String(),
+      'localId': localId,
+      'firebaseId': firebaseId,
     };
   }
 }

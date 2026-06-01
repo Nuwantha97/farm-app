@@ -1,47 +1,62 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../models/crop_model.dart';
 import '../services/crop_service.dart';
 
 class CropProvider extends ChangeNotifier {
   final CropService _service = CropService();
+  final SyncService _syncService = SyncService();
 
   List<Crop> _crops = [];
   bool _isLoading = false;
   String? _errorMessage;
+  StreamSubscription<List<Crop>>? _cropsSubscription;
 
   List<Crop> get crops => _crops;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  int get activeCropCount => _crops.where((c) => c.status == 'growing' || c.status == 'planted').length;
+  /// Fire-and-forget sync after a local CRUD operation.
+  void _triggerSync(String userId) {
+    _syncService.immediateSync(userId).catchError((_) {});
+  }
 
-  /// Listen to crops for a user
+  int get activeCropCount =>
+      _crops.where((c) => c.status == 'growing' || c.status == 'planted').length;
+
+  /// Listen to crops for a user (reactive from Hive).
   void loadCrops(String userId) {
     _isLoading = true;
     notifyListeners();
 
     // Auto-transition planted crops to growing after 1 day
     _service.autoTransitionPlantedCrops(userId).then((_) {
-      _service
-          .getCrops(userId)
-          .listen(
-            (cropList) {
-              _crops = cropList;
-              _isLoading = false;
-              notifyListeners();
-            },
-            onError: (e) {
-              _errorMessage = 'Failed to load crops';
-              _isLoading = false;
-              notifyListeners();
-            },
-          );
+      _cropsSubscription?.cancel();
+      _cropsSubscription = _service.getCrops(userId).listen(
+        (cropList) {
+          _crops = cropList;
+          _isLoading = false;
+          notifyListeners();
+        },
+        onError: (e) {
+          _errorMessage = 'Failed to load crops';
+          _isLoading = false;
+          notifyListeners();
+        },
+      );
+
+      // Fetch from Firebase in background and merge into Hive.
+      // The Hive listener above will automatically pick up changes.
+      SyncService().backgroundPull(userId);
     });
   }
 
   Future<bool> addCrop(String userId, Crop crop) async {
     try {
       await _service.addCrop(userId, crop);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to add crop';
@@ -57,6 +72,7 @@ class CropProvider extends ChangeNotifier {
   ) async {
     try {
       await _service.updateCrop(userId, cropId, data);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to update crop';
@@ -68,6 +84,7 @@ class CropProvider extends ChangeNotifier {
   Future<bool> deleteCrop(String userId, String cropId) async {
     try {
       await _service.deleteCrop(userId, cropId);
+      _triggerSync(userId);
       return true;
     } catch (e) {
       _errorMessage = 'Failed to delete crop';
@@ -79,5 +96,17 @@ class CropProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Pull-to-refresh: sync with cloud and re-run auto-transitions.
+  Future<void> refresh(String userId) async {
+    await _service.autoTransitionPlantedCrops(userId);
+    await _syncService.immediateSync(userId);
+  }
+
+  @override
+  void dispose() {
+    _cropsSubscription?.cancel();
+    super.dispose();
   }
 }

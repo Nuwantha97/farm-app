@@ -8,4 +8,5 @@ class AppRoutes {
   static const String finance = '/finance';
   static const String addExpense = '/finance/add-expense';
   static const String expenseList = '/finance/expenses';
+  static const String settings = '/settings';
 }

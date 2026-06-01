@@ -21,7 +21,7 @@ class _FinanceScreenState extends State<FinanceScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    final userId = context.read<AuthProvider>().user?.uid;
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
       final financeProvider = context.read<FinanceProvider>();
       financeProvider.loadCommonExpenses(userId);
@@ -35,6 +35,13 @@ class _FinanceScreenState extends State<FinanceScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleRefresh() async {
+    final userId = context.read<AuthProvider>().currentUserId;
+    if (userId != null) {
+      await context.read<FinanceProvider>().refresh(userId);
+    }
   }
 
   @override
@@ -63,6 +70,7 @@ class _FinanceScreenState extends State<FinanceScreen>
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'financeFab',
         onPressed: () {
           Navigator.pushNamed(context, AppRoutes.addExpense);
         },
@@ -78,9 +86,12 @@ class _FinanceScreenState extends State<FinanceScreen>
         final profit = finance.totalProfit;
         final isProfitable = profit >= 0;
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+        return RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Summary cards row
@@ -216,10 +227,9 @@ class _FinanceScreenState extends State<FinanceScreen>
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: (isProfitable
-                              ? AppColors.success
-                              : AppColors.error)
-                          .withValues(alpha: 0.3),
+                      color:
+                          (isProfitable ? AppColors.success : AppColors.error)
+                              .withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -234,9 +244,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
-                        isProfitable
-                            ? Icons.emoji_events
-                            : Icons.warning_amber,
+                        isProfitable ? Icons.emoji_events : Icons.warning_amber,
                         color: Colors.white,
                         size: 28,
                       ),
@@ -328,6 +336,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                     .map((expense) => _expenseListItem(context, expense)),
             ],
           ),
+          ),
         );
       },
     );
@@ -336,39 +345,48 @@ class _FinanceScreenState extends State<FinanceScreen>
   Widget _buildIncomeTab() {
     return Consumer<FinanceProvider>(
       builder: (context, finance, _) {
-        if (finance.incomeEntries.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.monetization_on_outlined,
-                  size: 80,
-                  color: AppColors.textHint.withValues(alpha: 0.4),
+        return RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: finance.incomeEntries.isEmpty
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.monetization_on_outlined,
+                              size: 80,
+                              color: AppColors.textHint.withValues(alpha: 0.4),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No income recorded',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Mark crops as Sold or Consumed to track income',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: finance.incomeEntries.length,
+                  itemBuilder: (context, index) {
+                    return _incomeListItem(context, finance.incomeEntries[index]);
+                  },
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'No income recorded',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Mark crops as Sold or Consumed to track income',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: finance.incomeEntries.length,
-          itemBuilder: (context, index) {
-            return _incomeListItem(context, finance.incomeEntries[index]);
-          },
         );
       },
     );
@@ -377,39 +395,48 @@ class _FinanceScreenState extends State<FinanceScreen>
   Widget _buildCommonExpensesTab() {
     return Consumer<FinanceProvider>(
       builder: (context, finance, _) {
-        if (finance.commonExpenses.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  size: 80,
-                  color: AppColors.textHint.withValues(alpha: 0.4),
+        return RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: finance.commonExpenses.isEmpty
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 80,
+                              color: AppColors.textHint.withValues(alpha: 0.4),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No common expenses',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add farm-wide expenses here',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: finance.commonExpenses.length,
+                  itemBuilder: (context, index) {
+                    return _expenseListItem(context, finance.commonExpenses[index]);
+                  },
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'No common expenses',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Add farm-wide expenses here',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: finance.commonExpenses.length,
-          itemBuilder: (context, index) {
-            return _expenseListItem(context, finance.commonExpenses[index]);
-          },
         );
       },
     );
@@ -488,10 +515,9 @@ class _FinanceScreenState extends State<FinanceScreen>
               children: [
                 Text(
                   entry['name'] ?? '',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontSize: 15),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontSize: 15),
                 ),
                 Row(
                   children: [
@@ -518,10 +544,9 @@ class _FinanceScreenState extends State<FinanceScreen>
                       entry['date'] != null
                           ? dateFormat.format(entry['date'] as DateTime)
                           : '',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(fontSize: 12),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                     ),
                   ],
                 ),

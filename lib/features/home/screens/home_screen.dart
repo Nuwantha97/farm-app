@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
+import 'package:marquee/marquee.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,20 +17,34 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().user?.uid;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = context.read<AuthProvider>().currentUserId;
+
+      if (userId != null) {
+        context.read<DashboardProvider>().loadDashboard(userId);
+      }
+    });
+  }
+
+  Future<void> _handleRefresh() async {
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
-      context.read<DashboardProvider>().loadDashboard(userId);
+      await context.read<DashboardProvider>().refresh(userId);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
-    final userName = authProvider.user?.email?.split('@').first ?? 'Farmer';
+    final userName = authProvider.user?.email.split('@').first ?? 'Farmer';
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           // Custom App Bar
           SliverToBoxAdapter(
             child: Container(
@@ -52,27 +67,57 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome back,',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 14,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Welcome back,',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            userName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
+                            const SizedBox(height: 2),
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                const textStyle = TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                );
+
+                                // Measure if the text fits
+                                final textPainter = TextPainter(
+                                  text: TextSpan(text: userName, style: textStyle),
+                                  maxLines: 1,
+                                  textDirection: TextDirection.ltr,
+                                )..layout(maxWidth: double.infinity);
+
+                                final textFits = textPainter.width <= constraints.maxWidth;
+
+                                if (textFits) {
+                                  return Text(userName, style: textStyle);
+                                }
+
+                                return SizedBox(
+                                  height: 32,
+                                  child: ExcludeSemantics(
+                                    child: Marquee(
+                                      text: userName,
+                                      style: textStyle,
+                                      scrollAxis: Axis.horizontal,
+                                      blankSpace: 50,
+                                      velocity: 50,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 12),
                       Row(
                         children: [
                           Container(
@@ -96,17 +141,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             child: IconButton(
                               icon: const Icon(
-                                Icons.logout,
+                                Icons.settings_outlined,
                                 color: Colors.white,
                               ),
-                              onPressed: () async {
-                                await context.read<AuthProvider>().logout();
-                                if (context.mounted) {
-                                  Navigator.pushReplacementNamed(
-                                    context,
-                                    AppRoutes.login,
-                                  );
-                                }
+                              onPressed: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.settings,
+                                );
                               },
                             ),
                           ),
@@ -259,7 +301,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -9,6 +9,12 @@ class Expense {
   final String? cropName; // denormalized for display
   final DateTime createdAt;
 
+  // Sync tracking fields
+  final String syncStatus; // 'pending', 'synced', 'modified', 'deleted'
+  final DateTime updatedAt;
+  final String localId; // UUID for local identity
+  final String? firebaseId; // Firestore document ID
+
   Expense({
     required this.id,
     required this.title,
@@ -17,10 +23,17 @@ class Expense {
     this.cropId,
     this.cropName,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    this.syncStatus = 'pending',
+    DateTime? updatedAt,
+    String? localId,
+    this.firebaseId,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now(),
+        localId = localId ?? id;
 
   bool get isCommonExpense => cropId == null;
 
+  /// Deserialize from Firestore document (used for sync pull).
   factory Expense.fromFirestore(
     DocumentSnapshot doc, {
     String? cropId,
@@ -39,9 +52,35 @@ class Expense {
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
+      syncStatus: 'synced',
+      updatedAt: data['updatedAt'] != null
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      localId: data['localId'] ?? doc.id,
+      firebaseId: doc.id,
     );
   }
 
+  /// Deserialize from Hive map (uses ISO date strings).
+  factory Expense.fromMap(Map<String, dynamic> map) {
+    return Expense(
+      id: map['id'] ?? '',
+      title: map['title'] ?? '',
+      amount: (map['amount'] ?? 0.0).toDouble(),
+      date: map['date'] != null ? DateTime.parse(map['date']) : DateTime.now(),
+      cropId: map['cropId'],
+      cropName: map['cropName'],
+      createdAt:
+          map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      syncStatus: map['syncStatus'] ?? 'pending',
+      updatedAt:
+          map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
+      localId: map['localId'],
+      firebaseId: map['firebaseId'],
+    );
+  }
+
+  /// Serialize for Firestore (used for sync push).
   Map<String, dynamic> toMap() {
     return {
       'title': title,
@@ -50,6 +89,25 @@ class Expense {
       'cropId': cropId,
       'cropName': cropName,
       'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      'localId': localId,
+    };
+  }
+
+  /// Serialize for Hive storage (uses ISO date strings).
+  Map<String, dynamic> toHiveMap() {
+    return {
+      'id': id,
+      'title': title,
+      'amount': amount,
+      'date': date.toIso8601String(),
+      'cropId': cropId,
+      'cropName': cropName,
+      'createdAt': createdAt.toIso8601String(),
+      'syncStatus': syncStatus,
+      'updatedAt': updatedAt.toIso8601String(),
+      'localId': localId,
+      'firebaseId': firebaseId,
     };
   }
 }

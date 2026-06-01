@@ -22,7 +22,7 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = context.read<AuthProvider>().user?.uid;
+    final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
       context.read<FinanceProvider>().loadCropExpenses(
         userId,
@@ -336,7 +336,7 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
             onPressed: () async {
               final navigator = Navigator.of(ctx);
               final parentNavigator = Navigator.of(context);
-              final userId = context.read<AuthProvider>().user?.uid;
+              final userId = context.read<AuthProvider>().currentUserId;
               if (userId != null) {
                 await context.read<CropProvider>().deleteCrop(userId, crop.id);
               }

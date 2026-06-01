@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/widgets/main_navigation.dart';
+import 'core/services/hive_service.dart';
 import 'routes/app_routes.dart';
 
 import 'features/auth/providers/auth_provider.dart';
 import 'features/crops/providers/crop_provider.dart';
 import 'features/finance/providers/finance_provider.dart';
 import 'features/home/providers/dashboard_provider.dart';
+import 'features/settings/providers/settings_provider.dart';
 
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
@@ -20,20 +21,18 @@ import 'features/crops/screens/crop_detail_screen.dart';
 import 'features/finance/screens/add_expense_screen.dart';
 import 'features/finance/screens/expense_list_screen.dart';
 import 'features/finance/screens/finance_screen.dart';
+import 'features/settings/screens/settings_screen.dart';
 
 import 'models/crop_model.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Initialize Hive (primary local database)
+  await HiveService.init();
 
-  // Enable offline persistence with unlimited cache
-  // This allows the app to work without internet connection
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-  );
+  // Initialize Firebase (needed for registration + sync)
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const FarmApp());
 }
@@ -49,6 +48,7 @@ class FarmApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CropProvider()),
         ChangeNotifierProvider(create: (_) => FinanceProvider()),
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
@@ -97,6 +97,10 @@ class FarmApp extends StatelessWidget {
                       cropId: args?['cropId'],
                       cropName: args?['cropName'],
                     ),
+                  );
+                case AppRoutes.settings:
+                  return MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
                   );
                 default:
                   return MaterialPageRoute(builder: (_) => const LoginScreen());

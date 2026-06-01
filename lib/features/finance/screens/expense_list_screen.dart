@@ -66,7 +66,7 @@ class ExpenseListScreen extends StatelessWidget {
                   child: const Icon(Icons.delete, color: Colors.white),
                 ),
                 onDismissed: (_) {
-                  final userId = context.read<AuthProvider>().user?.uid;
+                  final userId = context.read<AuthProvider>().currentUserId;
                   if (userId != null) {
                     if (expense.cropId != null) {
                       context.read<FinanceProvider>().deleteCropExpense(
