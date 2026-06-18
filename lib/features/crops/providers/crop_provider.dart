@@ -93,6 +93,19 @@ class CropProvider extends ChangeNotifier {
     }
   }
 
+  /// Archive a crop (remove from active list, keep in history).
+  Future<bool> archiveCrop(String userId, String cropId) async {
+    try {
+      await _service.archiveCrop(userId, cropId);
+      _triggerSync(userId);
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to archive crop';
+      notifyListeners();
+      return false;
+    }
+  }
+
   void clearError() {
     _errorMessage = null;
     notifyListeners();

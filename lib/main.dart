@@ -12,6 +12,7 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/crops/providers/crop_provider.dart';
 import 'features/finance/providers/finance_provider.dart';
 import 'features/home/providers/dashboard_provider.dart';
+import 'features/history/providers/history_provider.dart';
 import 'features/settings/providers/settings_provider.dart';
 
 import 'features/auth/screens/login_screen.dart';
@@ -21,6 +22,7 @@ import 'features/crops/screens/crop_detail_screen.dart';
 import 'features/finance/screens/add_expense_screen.dart';
 import 'features/finance/screens/expense_list_screen.dart';
 import 'features/finance/screens/finance_screen.dart';
+import 'features/history/screens/history_screen.dart';
 import 'features/settings/screens/settings_screen.dart';
 
 import 'models/crop_model.dart';
@@ -48,6 +50,7 @@ class FarmApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CropProvider()),
         ChangeNotifierProvider(create: (_) => FinanceProvider()),
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
+        ChangeNotifierProvider(create: (_) => HistoryProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: Consumer<AuthProvider>(
@@ -101,6 +104,10 @@ class FarmApp extends StatelessWidget {
                 case AppRoutes.settings:
                   return MaterialPageRoute(
                     builder: (_) => const SettingsScreen(),
+                  );
+                case AppRoutes.history:
+                  return MaterialPageRoute(
+                    builder: (_) => const HistoryScreen(),
                   );
                 default:
                   return MaterialPageRoute(builder: (_) => const LoginScreen());

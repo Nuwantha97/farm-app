@@ -54,6 +54,14 @@ service cloud.firestore {
         allow delete: if isAuthenticated() && isOwner(userId);
       }
       
+      // ===== Crop History (archived crops) =====
+      match /crop_history/{historyId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow create: if isAuthenticated() && isOwner(userId);
+        allow update: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && isOwner(userId);
+      }
+      
       // ===== Sales =====
       match /sales/{saleId} {
         allow read: if isAuthenticated() && isOwner(userId);

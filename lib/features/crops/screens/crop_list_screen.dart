@@ -111,14 +111,15 @@ class _CropListScreenState extends State<CropListScreen> {
                               Icon(
                                 Icons.eco_outlined,
                                 size: 80,
-                                color: AppColors.textHint.withValues(alpha: 0.5),
+                                color: AppColors.textHint.withValues(
+                                  alpha: 0.5,
+                                ),
                               ),
                               const SizedBox(height: 16),
                               Text(
                                 'No crops yet',
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(color: AppColors.textSecondary),
                               ),
                               const SizedBox(height: 8),
                               Text(
@@ -170,6 +171,9 @@ class _CropListScreenState extends State<CropListScreen> {
           onTap: () {
             Navigator.pushNamed(context, AppRoutes.cropDetail, arguments: crop);
           },
+          onLongPress: (crop.status == 'sold' || crop.status == 'consumed')
+              ? () => _confirmArchive(context, crop)
+              : null,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -230,6 +234,52 @@ class _CropListScreenState extends State<CropListScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _confirmArchive(BuildContext context, Crop crop) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Remove Crop'),
+        content: Text(
+          'Remove "${crop.name}" from your active list?\n\n'
+          'It will still appear in your History.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final navigator = Navigator.of(ctx);
+              final messenger = ScaffoldMessenger.of(context);
+              final userId = context.read<AuthProvider>().currentUserId;
+              if (userId != null) {
+                await context.read<CropProvider>().archiveCrop(userId, crop.id);
+              }
+              if (mounted) {
+                navigator.pop();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('"${crop.name}" moved to History'),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: AppColors.warning),
+            ),
+          ),
+        ],
       ),
     );
   }

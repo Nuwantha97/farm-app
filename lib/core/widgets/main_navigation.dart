@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/crops/screens/crop_list_screen.dart';
 import '../../features/finance/screens/finance_screen.dart';
+import '../../features/history/screens/history_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -17,6 +18,7 @@ class _MainNavigationState extends State<MainNavigation> {
     HomeScreen(),
     CropListScreen(),
     FinanceScreen(),
+    HistoryScreen(),
   ];
 
   @override
@@ -40,6 +42,7 @@ class _MainNavigationState extends State<MainNavigation> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
+          type: BottomNavigationBarType.fixed,
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
@@ -55,6 +58,11 @@ class _MainNavigationState extends State<MainNavigation> {
               icon: Icon(Icons.account_balance_wallet_outlined),
               activeIcon: Icon(Icons.account_balance_wallet),
               label: 'Finance',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.history_outlined),
+              activeIcon: Icon(Icons.history),
+              label: 'History',
             ),
           ],
         ),

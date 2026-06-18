@@ -10,6 +10,10 @@ class Crop {
   final double? consumedEstimatedAmount;
   final DateTime createdAt;
 
+  // Archive tracking fields
+  final bool isArchived; // true when crop is removed from active list
+  final DateTime? archivedAt; // when the crop was archived
+
   // Sync tracking fields
   final String syncStatus; // 'pending', 'synced', 'modified', 'deleted'
   final DateTime updatedAt;
@@ -25,6 +29,8 @@ class Crop {
     this.soldAmount,
     this.consumedEstimatedAmount,
     DateTime? createdAt,
+    this.isArchived = false,
+    this.archivedAt,
     this.syncStatus = 'pending',
     DateTime? updatedAt,
     String? localId,
@@ -55,6 +61,10 @@ class Crop {
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
+      isArchived: data['isArchived'] ?? false,
+      archivedAt: data['archivedAt'] != null
+          ? (data['archivedAt'] as Timestamp).toDate()
+          : null,
       syncStatus: 'synced',
       updatedAt: data['updatedAt'] != null
           ? (data['updatedAt'] as Timestamp).toDate()
@@ -83,6 +93,10 @@ class Crop {
           : null,
       createdAt:
           map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      isArchived: map['isArchived'] ?? false,
+      archivedAt: map['archivedAt'] != null
+          ? DateTime.parse(map['archivedAt'])
+          : null,
       syncStatus: map['syncStatus'] ?? 'pending',
       updatedAt:
           map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
@@ -103,6 +117,9 @@ class Crop {
       'soldAmount': soldAmount,
       'consumedEstimatedAmount': consumedEstimatedAmount,
       'createdAt': Timestamp.fromDate(createdAt),
+      'isArchived': isArchived,
+      'archivedAt':
+          archivedAt != null ? Timestamp.fromDate(archivedAt!) : null,
       'updatedAt': Timestamp.fromDate(updatedAt),
       'localId': localId,
     };
@@ -119,6 +136,8 @@ class Crop {
       'soldAmount': soldAmount,
       'consumedEstimatedAmount': consumedEstimatedAmount,
       'createdAt': createdAt.toIso8601String(),
+      'isArchived': isArchived,
+      'archivedAt': archivedAt?.toIso8601String(),
       'syncStatus': syncStatus,
       'updatedAt': updatedAt.toIso8601String(),
       'localId': localId,
@@ -134,6 +153,8 @@ class Crop {
     DateTime? harvestedDate,
     double? soldAmount,
     double? consumedEstimatedAmount,
+    bool? isArchived,
+    DateTime? archivedAt,
     String? syncStatus,
     DateTime? updatedAt,
     String? localId,
@@ -149,6 +170,8 @@ class Crop {
       consumedEstimatedAmount:
           consumedEstimatedAmount ?? this.consumedEstimatedAmount,
       createdAt: createdAt,
+      isArchived: isArchived ?? this.isArchived,
+      archivedAt: archivedAt ?? this.archivedAt,
       syncStatus: syncStatus ?? this.syncStatus,
       updatedAt: updatedAt ?? this.updatedAt,
       localId: localId ?? this.localId,
