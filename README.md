@@ -15,7 +15,7 @@ A comprehensive **offline-first** farm management application built with Flutter
 ### 💰 Finance & Expense Tracking
 - **Crop-specific expenses** — Track costs tied to individual crops (seeds, fertilizer, labor, etc.)
 - **Common expenses** — Record farm-wide expenses not linked to a specific crop (equipment, utilities, etc.)
-- **Income tracking** — Log crop sales with quantity, unit, and amount
+- **Income tracking** — Record a sale amount or an estimated consumption value on the crop
 - **Profit calculation** — See income vs. expenses at a glance
 
 ### 📊 Dashboard
@@ -31,41 +31,81 @@ A comprehensive **offline-first** farm management application built with Flutter
 
 ### ☁️ Cloud Sync (Optional)
 - **Bidirectional sync** between local Hive storage and Cloud Firestore
-- Toggle sync on/off from Settings — your data stays local if you prefer
-- **Last-write-wins** conflict resolution based on `updatedAt` timestamps
+- Toggle automatic sync from Settings
+- Crop conflicts use `updatedAt` to choose the newer version
 - Sync status tracking per record (`pending`, `synced`, `modified`, `deleted`)
 - Manual "Sync Now" with detailed push/pull/conflict reporting
-- Automatic initial pull when logging in on a new device
+- Initial download when syncing an account with no local crop records
 
 ### 🔒 Security
-- All local data encrypted with **AES-256** via Hive encrypted boxes
-- Encryption key stored securely in the platform keychain (`flutter_secure_storage`)
-- Firestore security rules enforce per-user data isolation with field-level validation
-- Account deletion permanently removes data from both local storage and Firebase
+- Hive boxes use **AES-256** encryption, with the key managed by `flutter_secure_storage`
+- Firestore rules restrict farm data to the signed-in account and validate fields on selected document creates
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Backend Architecture
 
 ### Offline-First Design
 
-```
-┌──────────────────────────────────┐
-│           Flutter UI             │
-│  (Providers / State Management)  │
-├──────────────────────────────────┤
-│         Service Layer            │
-│  AuthService · CropService ·     │
-│  FinanceService · SyncService    │
-├──────────────┬───────────────────┤
-│  Hive (Local)│  Firestore (Cloud)│
-│  ● Encrypted │  ● Per-user data  │
-│  ● Primary   │  ● Optional sync  │
-│    source    │    destination    │
-└──────────────┴───────────────────┘
+```mermaid
+flowchart LR
+    UI[Flutter screens] <--> P[Providers]
+    P --> S[Crop and expense services]
+    S <--> H[(Encrypted Hive boxes)]
+    H <--> Y[SyncService]
+    Y <--> F[(Cloud Firestore)]
+    P --> A[AuthService]
+    A <--> H
+    A <--> U[Firebase Authentication]
 ```
 
-All CRUD operations read/write to **Hive first**. Cloud Firestore is only used when sync is enabled and the device is online.
+The Flutter app talks directly to Firebase Authentication and Cloud Firestore. Crop and expense services write to Hive first, and providers listen for local changes to update the screens. `SyncService` copies changes between Hive and Firestore. [App startup](lib/main.dart) · [Sync service](lib/core/services/sync_service.dart)
+
+### Local storage in Hive
+
+On native platforms, Hive stores its box files in the app's documents directory. On the web, Hive uses IndexedDB. `HiveService` opens all seven boxes with `HiveAesCipher`, using a generated key that it stores and retrieves through `flutter_secure_storage`. Crop and expense records are stored as maps with dates encoded as ISO 8601 strings. [Hive service](lib/core/services/hive_service.dart) · [Crop model](lib/models/crop_model.dart) · [Expense model](lib/models/expense_model.dart)
+
+| Hive box | Key | Stored data |
+|---|---|---|
+| `users` | Normalized email | Local account ID, linked Firebase UID, and salted SHA-256 password hash |
+| `crops` | `{localUserId}_{cropId}` | Crop name, status, planting and harvest dates, sale amount or consumption value, archive fields, and sync metadata |
+| `expenses` | `{localUserId}_{cropId}_{expenseId}` | Crop expense title, amount, date, and sync metadata |
+| `common_expenses` | `{localUserId}_common_{expenseId}` | Farm-wide expenses |
+| `crop_history` | `{localUserId}_{cropId}` | Archived crop snapshots |
+| `expense_history` | Same key as the original `expenses` entry | Local copies of a crop's expenses at the time of archiving |
+| `settings` | Setting name | Sync preference, last sync time, and the email used to restore the local session |
+
+The app creates a local account ID on each device and links it to the same Firebase Auth UID. Crops and expenses have a stable `localId` that the sync service sends to Firestore and uses to match records across devices. `firebaseId` records the corresponding Firestore document ID in Hive after upload or download. The crop ID in a Hive key normally uses the local crop ID. The initial download can key nested expenses by the Firestore crop document ID. [Local user model](lib/models/user_model.dart) · [Sync service](lib/core/services/sync_service.dart)
+
+When a user removes a sold or consumed crop from **My Crops**, the app copies its expenses and crop snapshot into the history boxes and flags the original crop as archived. Both lists observe the crop and history boxes. A history snapshot hides the crop from My Crops even if a stale row still exists in `crops`. History shows one entry per crop key. [Crop service](lib/features/crops/services/crop_service.dart)
+
+### Authentication and Firestore storage
+
+Firebase Authentication handles registration and first sign-in on a device. On later sign-ins, the app can verify the password against its local salted hash while offline. Hive keeps the hash, salt, and Firebase UID in `users`, and the `settings` box lets the app restore the session when it restarts. [Auth service](lib/features/auth/services/auth_service.dart)
+
+`SyncService` stores cloud documents under `users/{firebaseUid}`, where `firebaseUid` is the Firebase Authentication account ID. Firestore stores dates as `Timestamp` values and uses its document IDs in collection paths. [Sync service](lib/core/services/sync_service.dart)
+
+```text
+users/{firebaseUid}
+├── crops/{cropDocumentId}
+│   └── expenses/{expenseDocumentId}
+├── common_expenses/{expenseDocumentId}
+└── crop_history/{historyDocumentId}
+```
+
+Sale amounts and estimated consumption values live on crop documents. Archived crop snapshots sync to `crop_history`. The expense snapshots stay in the local `expense_history` box, and the original expense records sync under their parent crop document. [Crop model](lib/models/crop_model.dart) · [Crop service](lib/features/crops/services/crop_service.dart) · [Sync service](lib/core/services/sync_service.dart)
+
+### How sync runs
+
+1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.
+2. Automatic sync is off by default. When enabled, screen loads, local changes, and pull-to-refresh can trigger it. **Settings → Sync Now** requests a manual run. When the account has no local crop records, that flow first downloads existing cloud records for the linked account.
+3. With connectivity and a linked account, the service processes crops, crop expenses, common expenses, and crop history in that order. It uploads local changes and pulls remote records into Hive. A successful upload marks the local record `synced`. Once a queued delete succeeds in Firestore, the service removes the local record.
+4. For conflicting crop edits, sync compares `updatedAt` and keeps the newer crop, with the local edit winning a tie. For crop and expense pulls, a newer remote row can update a local copy already marked `synced`. Sync errors appear in Settings. [Sync service](lib/core/services/sync_service.dart) · [Settings provider](lib/features/settings/providers/settings_provider.dart)
+
+### Firestore access and current limits
+
+- The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. The crop-create rule requires `type`, but the current crop serializer omits that field. Deploying those rules as written can cause new crop uploads to fail with `permission-denied`. [Firestore rules](firestore.rules) · [Crop serializer](lib/models/crop_model.dart)
+- The account deletion flow attempts to remove the Firebase Authentication account and clears local Hive data. The separate Firestore cleanup method is unconnected to that flow, so cloud farm documents can remain. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore cleanup method](lib/core/services/sync_service.dart)
 
 ### Project Structure
 
@@ -99,7 +139,10 @@ lib/
 │   ├── finance/
 │   │   ├── providers/             # FinanceProvider
 │   │   ├── screens/               # FinanceScreen, AddExpenseScreen, ExpenseListScreen
-│   │   └── services/              # FinanceService
+│   │   └── services/              # ExpenseService
+│   ├── history/
+│   │   ├── providers/             # HistoryProvider
+│   │   └── screens/               # HistoryScreen
 │   ├── home/
 │   │   ├── providers/             # DashboardProvider
 │   │   └── screens/               # HomeScreen (dashboard)
@@ -111,7 +154,7 @@ lib/
 ├── models/
 │   ├── crop_model.dart            # Crop entity with lifecycle statuses
 │   ├── expense_model.dart         # Expense entity (crop-specific & common)
-│   ├── sale_model.dart            # Sale entity with quantity & unit
+│   ├── sale_model.dart            # Sale model outside the current storage flow
 │   └── user_model.dart            # LocalUser entity
 │
 └── routes/
@@ -120,13 +163,14 @@ lib/
 
 ### State Management
 
-The app uses **Provider** (`ChangeNotifierProvider`) for reactive state management:
+The app uses **Provider** (`ChangeNotifierProvider`) for reactive state management.
 
 | Provider | Responsibility |
 |---|---|
 | `AuthProvider` | Login, registration, session management |
 | `CropProvider` | CRUD operations for crops |
-| `FinanceProvider` | Expenses, sales, and financial summaries |
+| `FinanceProvider` | Expenses, crop income, and financial summaries |
+| `HistoryProvider` | Archived crops and all-time financial totals |
 | `DashboardProvider` | Aggregated dashboard statistics |
 | `SettingsProvider` | Sync toggle, sync execution, app preferences |
 
@@ -198,7 +242,7 @@ The app uses **Provider** (`ChangeNotifierProvider`) for reactive state manageme
 
 ### Firebase Emulator (Optional)
 
-For local development without a live Firebase project:
+Start the local Auth and Firestore emulators for development:
 
 ```bash
 firebase emulators:start
@@ -208,6 +252,8 @@ The emulator configuration is already set up in `firebase.json`:
 - **Auth emulator**: port `9099`
 - **Firestore emulator**: port `8080`
 - **Emulator UI**: enabled
+
+App startup initializes the configured Firebase project. To test against the emulators, connect the Firebase Auth and Firestore clients to the local endpoints before using them. [Emulator configuration](firebase.json) · [App startup](lib/main.dart)
 
 ---
 
@@ -221,27 +267,3 @@ The emulator configuration is already set up in `firebase.json`:
 | Windows | 🔧 Configured |
 | macOS | 🔧 Configured |
 | Linux | 🔧 Configured |
-
----
-
-## 🗄️ Data Model
-
-### Firestore Structure
-
-```
-users/{userId}/
-├── crops/{cropId}
-│   └── expenses/{expenseId}
-├── common_expenses/{expenseId}
-└── sales/{saleId}
-```
-
-### Sync Status Lifecycle
-
-```
-[Created locally] → pending → [Pushed to cloud] → synced
-                                                      ↓
-                                              [Edited locally] → modified → [Re-pushed] → synced
-                                                      ↓
-                                            [Deleted locally] → deleted → [Deleted from cloud] → removed
-```
