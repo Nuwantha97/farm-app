@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../models/expense_model.dart';
 import '../services/expense_service.dart';

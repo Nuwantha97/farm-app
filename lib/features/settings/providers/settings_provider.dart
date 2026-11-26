@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/services/hive_service.dart';
 import '../../../core/services/sync_service.dart';

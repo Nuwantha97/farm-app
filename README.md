@@ -136,7 +136,7 @@ The app uses **Provider** (`ChangeNotifierProvider`) for reactive state manageme
 
 | Category | Technology |
 |---|---|
-| Framework | Flutter (Dart SDK ^3.11.4) |
+| Framework | Flutter 3.50+ (Dart 3.14+) |
 | State Management | Provider |
 | Local Database | Hive (AES-256 encrypted) |
 | Cloud Backend | Firebase (Auth + Cloud Firestore) |
@@ -153,8 +153,9 @@ The app uses **Provider** (`ChangeNotifierProvider`) for reactive state manageme
 
 ### Prerequisites
 
-- **Flutter SDK** ≥ 3.11.4
-- **Dart SDK** ≥ 3.11.4
+- **Flutter SDK** 3.50 or later, with Dart 3.14 or later bundled
+- **Android** JDK 17 or later and Android SDK Platform 36. The first build can download the required NDK and CMake packages.
+- **Windows** Enable Developer Mode if Flutter reports that plugin symlinks require it.
 - **Firebase project** configured (Android/Web)
 - Android Studio / VS Code with Flutter extension
 
@@ -183,7 +184,7 @@ The app uses **Provider** (`ChangeNotifierProvider`) for reactive state manageme
    flutterfire configure
    ```
 
-   This will generate the `firebase_options.dart` file with your project's configuration.
+   This generates `lib/firebase_options.dart` with your project's configuration. The Android build also requires `android/app/google-services.json` for the configured Android app.
 
 4. **Deploy Firestore rules** (if using cloud sync)
    ```bash

@@ -51,7 +51,9 @@ class HiveService {
 
   /// Get or create the AES-256 encryption key from secure storage.
   static Future<Uint8List> _getOrCreateEncryptionKey() async {
-    const secureStorage = FlutterSecureStorage();
+    const secureStorage = FlutterSecureStorage(
+      aOptions: AndroidOptions(migrateWithBackup: true, resetOnError: false),
+    );
     final existingKey = await secureStorage.read(key: _encryptionKeyName);
 
     if (existingKey != null) {
