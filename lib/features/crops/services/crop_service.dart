@@ -33,24 +33,27 @@ class CropService {
   }
 
   /// Get all active (non-archived) crops for a user as a stream.
-  Stream<List<Crop>> getCrops(String userId) {
-    // Create a stream from Hive's ValueListenable
+  Stream<List<Crop>> getCrops(String userId) =>
+      _watchCropLists(() => _getCropsList(userId));
+
+  Stream<List<Crop>> _watchCropLists(List<Crop> Function() readCrops) {
     final controller = StreamController<List<Crop>>();
-
-    // Emit initial value
-    controller.add(_getCropsList(userId));
-
-    // Listen for changes
     void listener() {
       if (!controller.isClosed) {
-        controller.add(_getCropsList(userId));
+        controller.add(readCrops());
       }
     }
 
-    HiveService.cropsBox.listenable().addListener(listener);
-
+    final crops = HiveService.cropsBox.listenable();
+    final history = HiveService.cropHistoryBox.listenable();
+    controller.onListen = () {
+      crops.addListener(listener);
+      history.addListener(listener);
+      listener();
+    };
     controller.onCancel = () {
-      HiveService.cropsBox.listenable().removeListener(listener);
+      crops.removeListener(listener);
+      history.removeListener(listener);
     };
 
     return controller.stream;
@@ -60,14 +63,17 @@ class CropService {
   List<Crop> _getCropsList(String userId) {
     final entries = HiveService.getItemsByUser(HiveService.cropsBox, userId);
     final crops = entries
+        .where((entry) => !HiveService.cropHistoryBox.containsKey(entry.key))
         .map((e) => Crop.fromMap(Map<String, dynamic>.from(e.value)))
-        .where((c) => c.syncStatus != 'deleted' && !c.isArchived)
+        .where((c) => c.syncStatus != 'deleted' && !_isArchived(c))
         .toList();
 
     // Sort by createdAt descending
     crops.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return crops;
   }
+
+  bool _isArchived(Crop crop) => crop.isArchived || crop.archivedAt != null;
 
   /// Get a single crop by ID.
   Future<Crop?> getCropById(String userId, String cropId) async {
@@ -100,28 +106,18 @@ class CropService {
   /// Archive a crop (soft-remove from active list, keep in history).
   /// Only works for 'sold' or 'consumed' crops.
   /// Copies the crop snapshot and its expenses into history boxes.
-  Future<void> archiveCrop(String userId, String cropId) async {
+  Future<bool> archiveCrop(String userId, String cropId) async {
     final key = _key(userId, cropId);
     final existing = HiveService.cropsBox.get(key);
-    if (existing == null) return;
+    if (existing == null || existing['syncStatus'] == 'deleted') return false;
+    final status = existing['status'];
+    if (status != 'sold' && status != 'consumed') return false;
+    final history = HiveService.cropHistoryBox.get(key);
+    if (history != null && existing['isArchived'] == true) return true;
+    final now = DateTime.now().toIso8601String();
+    final archivedAt = history?['archivedAt'] ?? existing['archivedAt'] ?? now;
 
-    final data = Map<String, dynamic>.from(existing);
-    final status = data['status'] ?? '';
-
-    // Only allow archiving sold or consumed crops
-    if (status != 'sold' && status != 'consumed') return;
-
-    // 1. Save crop snapshot to history box
-    final historyKey = '${userId}_$cropId';
-    final historyData = Map<String, dynamic>.from(data);
-    historyData['archivedAt'] = DateTime.now().toIso8601String();
-    historyData['isArchived'] = true;
-    await HiveService.cropHistoryBox.put(
-      historyKey,
-      Map<String, dynamic>.from(historyData),
-    );
-
-    // 2. Copy associated crop expenses to expense history box
+    // Save expenses before publishing the archive snapshot.
     final expPrefix = '${userId}_${cropId}_';
     for (final entry in HiveService.expensesBox.toMap().entries) {
       if (!entry.key.toString().startsWith(expPrefix)) continue;
@@ -134,14 +130,31 @@ class CropService {
       );
     }
 
-    // 3. Mark the crop as archived in the main crops box
-    data['isArchived'] = true;
-    data['archivedAt'] = DateTime.now().toIso8601String();
-    data['syncStatus'] = 'modified';
-    data['updatedAt'] = DateTime.now().toIso8601String();
-    await HiveService.cropsBox.put(key, Map<String, dynamic>.from(data));
+    final current = HiveService.cropsBox.get(key);
+    if (current == null || current['syncStatus'] == 'deleted') return false;
+    if (!HiveService.cropHistoryBox.containsKey(key)) {
+      await HiveService.cropHistoryBox.put(key, {
+        ...current,
+        'isArchived': true,
+        'archivedAt': archivedAt,
+        'updatedAt': now,
+        'firebaseId': null,
+        'syncStatus': 'pending',
+      });
+    }
+
+    final latest = HiveService.cropsBox.get(key);
+    if (latest == null || latest['syncStatus'] == 'deleted') return false;
+    await HiveService.cropsBox.put(key, {
+      ...latest,
+      'isArchived': true,
+      'archivedAt': archivedAt,
+      'syncStatus': latest['firebaseId'] == null ? 'pending' : 'modified',
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
 
     debugPrint('CropService: Archived crop $cropId');
+    return true;
   }
 
   /// Delete a crop permanently (marks as deleted for sync, removes from history too).
@@ -268,34 +281,28 @@ class CropService {
 
   // ── History methods ──────────────────────────────────────────
 
-  /// Get all archived crops from history box as a stream.
-  Stream<List<Crop>> getHistoryCrops(String userId) {
-    final controller = StreamController<List<Crop>>();
-
-    controller.add(_getHistoryCropsList(userId));
-
-    void listener() {
-      if (!controller.isClosed) {
-        controller.add(_getHistoryCropsList(userId));
-      }
-    }
-
-    HiveService.cropHistoryBox.listenable().addListener(listener);
-    controller.onCancel = () {
-      HiveService.cropHistoryBox.listenable().removeListener(listener);
-    };
-
-    return controller.stream;
-  }
+  /// Watch archived crops, including ones whose history snapshot has yet to sync.
+  Stream<List<Crop>> getHistoryCrops(String userId) =>
+      _watchCropLists(() => _getHistoryCropsList(userId));
 
   List<Crop> _getHistoryCropsList(String userId) {
-    final entries = HiveService.getItemsByUser(
+    final byKey = <String, Crop>{};
+    for (final entry in HiveService.getItemsByUser(
+      HiveService.cropsBox,
+      userId,
+    )) {
+      final crop = Crop.fromMap(Map<String, dynamic>.from(entry.value));
+      if (crop.syncStatus != 'deleted' && _isArchived(crop)) {
+        byKey[entry.key] = crop;
+      }
+    }
+    for (final entry in HiveService.getItemsByUser(
       HiveService.cropHistoryBox,
       userId,
-    );
-    final crops = entries
-        .map((e) => Crop.fromMap(Map<String, dynamic>.from(e.value)))
-        .toList();
+    )) {
+      byKey[entry.key] = Crop.fromMap(Map<String, dynamic>.from(entry.value));
+    }
+    final crops = byKey.values.toList();
 
     // Sort by archivedAt descending
     crops.sort(

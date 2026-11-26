@@ -258,14 +258,21 @@ class _CropListScreenState extends State<CropListScreen> {
               final navigator = Navigator.of(ctx);
               final messenger = ScaffoldMessenger.of(context);
               final userId = context.read<AuthProvider>().currentUserId;
-              if (userId != null) {
-                await context.read<CropProvider>().archiveCrop(userId, crop.id);
-              }
-              if (mounted) {
+              final archived =
+                  userId != null &&
+                  await context.read<CropProvider>().archiveCrop(
+                    userId,
+                    crop.localId,
+                  );
+              if (mounted && ctx.mounted) {
                 navigator.pop();
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text('"${crop.name}" moved to History'),
+                    content: Text(
+                      archived
+                          ? '"${crop.name}" moved to History'
+                          : 'Could not move "${crop.name}" to History',
+                    ),
                     behavior: SnackBarBehavior.floating,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
