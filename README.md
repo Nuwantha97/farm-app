@@ -82,6 +82,8 @@ When a user removes a sold or consumed crop from **My Crops**, the app copies it
 
 To archive a farm-wide expense, long-press it in **Finance → Common Expenses** and select **Move to History**. **History → Expenses** lists archived common expenses and crop expenses grouped by crop. The **All-Time Summary** combines current and archived expenses, counting each expense once.
 
+Use **History → Clear History → Clear on all devices** to delete archives while keeping current crop and expense records. The app saves the request in Hive before clearing this device. **Cloud deletion pending** stays visible until Firebase confirms the deletion after sync resumes. The `history/archive` document now records the clear cutoff so older archives cannot be uploaded again. Publish the updated Firestore rules to enable this feature.
+
 ### Authentication and Firestore storage
 
 Firebase Authentication handles registration and first sign-in on a device. On later sign-ins, the app can verify the password against its local salted hash while offline. Hive keeps the hash, salt, and Firebase UID in `users`, and the `settings` box lets the app restore the session when it restarts. [Auth service](lib/features/auth/services/auth_service.dart)

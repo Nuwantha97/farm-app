@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'hive_service.dart';
+import 'history_clear_service.dart';
 import 'sync_service.dart';
 
 /// Watches the signed-in account's existing collections while sync is enabled.
@@ -13,6 +14,7 @@ class LiveFarmSync {
   final _collections = <StreamSubscription<Object?>>[];
   final _expenses = <String, StreamSubscription<Object?>>{};
   StreamSubscription<Object?>? _settings;
+  StreamSubscription<Object?>? _historyClear;
   StreamSubscription<User?>? _auth;
   Timer? _refresh;
   String? _localId;
@@ -27,6 +29,11 @@ class LiveFarmSync {
     _settings = HiveService.settingsBox.watch(key: 'isSyncEnabled').listen((_) {
       _updateSubscriptions();
     });
+    _historyClear = HiveService.settingsBox
+        .watch(key: HistoryClearService.pendingKey(localId))
+        .listen((event) {
+          if (!event.deleted) _scheduleSync(localId);
+        });
     _auth = FirebaseAuth.instance.authStateChanges().listen((_) {
       _updateSubscriptions();
     });
@@ -46,7 +53,19 @@ class LiveFarmSync {
     if (_collections.isNotEmpty) return;
 
     final account = FirebaseFirestore.instance.collection('users').doc(uid);
-    final archive = account.collection('history').doc('archive');
+    final archive = HistoryClearService.marker(account);
+    _collections.add(
+      archive.snapshots(includeMetadataChanges: true).listen(
+        (snapshot) {
+          if (!snapshot.metadata.isFromCache &&
+              !snapshot.metadata.hasPendingWrites) {
+            _scheduleSync(localId);
+          }
+        },
+        onError: (Object error) =>
+            debugPrint('Could not watch history clear: $error'),
+      ),
+    );
     _watchCropExpenses(account.collection('crops'), 'expenses', localId);
     _watchCropExpenses(
       archive.collection('crops_history'),
@@ -115,21 +134,32 @@ class LiveFarmSync {
             onServerSnapshot?.call(snapshot);
             if (needsServerSnapshot || snapshot.docChanges.isNotEmpty) {
               needsServerSnapshot = false;
-              _refresh ??= Timer(const Duration(milliseconds: 350), () async {
-                _refresh = null;
-                if (_localId != localId || !_isCurrentSession) return;
-                try {
-                  await _sync.immediateSync(localId);
-                } catch (error) {
-                  debugPrint('Live farm sync failed: $error');
-                }
-              });
+              _scheduleSync(localId);
             }
           },
           onError: (Object error) {
             debugPrint('Could not watch ${collection.path}: $error');
           },
         );
+  }
+
+  void _scheduleSync(
+    String localId, {
+    Duration delay = const Duration(milliseconds: 350),
+  }) {
+    if (_localId != localId || !_isCurrentSession) return;
+    _refresh ??= Timer(delay, () async {
+      _refresh = null;
+      if (_localId != localId || !_isCurrentSession) return;
+      try {
+        await _sync.immediateSync(localId);
+      } catch (error) {
+        debugPrint('Live farm sync failed: $error');
+      }
+      if (HistoryClearService.pending(localId) != null) {
+        _scheduleSync(localId, delay: const Duration(seconds: 15));
+      }
+    });
   }
 
   bool get _isCurrentSession =>
@@ -150,8 +180,10 @@ class LiveFarmSync {
   void dispose() {
     _stopWatching();
     unawaited(_settings?.cancel());
+    unawaited(_historyClear?.cancel());
     unawaited(_auth?.cancel());
     _settings = null;
+    _historyClear = null;
     _auth = null;
     _localId = null;
     _firebaseUid = null;

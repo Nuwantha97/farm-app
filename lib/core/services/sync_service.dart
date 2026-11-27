@@ -8,6 +8,7 @@ import '../../features/finance/services/expense_service.dart';
 import '../../models/crop_model.dart';
 import '../../models/expense_model.dart';
 import 'hive_service.dart';
+import 'history_clear_service.dart';
 
 /// Result of a sync operation.
 class SyncResult {
@@ -126,6 +127,14 @@ class SyncService {
     final errors = <String>[];
 
     try {
+      final userId = _getLocalUserId(firebaseUid);
+      if (userId != null) {
+        await HistoryClearService.synchronize(
+          userId,
+          _db.collection('users').doc(firebaseUid),
+          () => _canSync(firebaseUid),
+        );
+      }
       for (final sync in [
         _syncCrops,
         _syncExpenses,
@@ -181,9 +190,24 @@ class SyncService {
       const GetOptions(source: Source.server),
     );
     var changes = 0;
+    final userId = _getLocalUserId(uid);
+    final archive =
+        box == HiveService.cropHistoryBox ||
+        box == HiveService.expenseHistoryBox ||
+        box == HiveService.commonExpenseHistoryBox;
     for (final doc in snapshot.docs) {
       if (!_canSync(uid)) return changes;
       if (doc.metadata.hasPendingWrites) continue;
+      if (userId != null &&
+          (archive ||
+              box == HiveService.cropsBox &&
+                  HistoryClearService.isArchived(doc.data())) &&
+          HistoryClearService.isCleared(
+            doc.data(),
+            HistoryClearService.cutoff(userId),
+          )) {
+        continue;
+      }
       final localId = doc.data()['localId'] ?? doc.id;
       final key = '$prefix$localId';
       final legacyKey = legacyPrefix == null ? null : '$legacyPrefix$localId';
@@ -609,6 +633,12 @@ class SyncService {
     for (final entry in HiveService.getItemsByUser(history, userId)) {
       if (!_canSync(uid)) break;
       final data = entry.value;
+      if (HistoryClearService.isCleared(
+        data,
+        HistoryClearService.cutoff(userId),
+      )) {
+        continue;
+      }
       if (data['syncStatus'] == 'synced' && !current.containsKey(entry.key)) {
         continue;
       }
@@ -787,6 +817,12 @@ class SyncService {
       if (!_canSync(firebaseUid)) break;
       final data = Map<String, dynamic>.from(entry.value);
       final cropId = entry.key.substring(userPrefix.length);
+      if (HistoryClearService.isCleared(
+        data,
+        HistoryClearService.cutoff(userId),
+      )) {
+        continue;
+      }
       final document = historyRef.doc(cropId);
       final expenseRef = document.collection('expenses_history');
       final current = HiveService.cropsBox.get(entry.key);
