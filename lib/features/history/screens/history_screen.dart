@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/crop_model.dart';
+import '../../../models/expense_model.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/history_provider.dart';
 
@@ -20,7 +21,7 @@ class _HistoryScreenState extends State<HistoryScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthProvider>().currentUserId;
@@ -43,32 +44,115 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
   }
 
+  Future<void> _confirmClearHistory() async {
+    final userId = context.read<AuthProvider>().currentUserId;
+    if (userId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear history on all devices?'),
+        content: const Text(
+          'This permanently deletes archived crops and expenses. Current crops and expenses will stay. '
+          'History clears on this device now. If you are offline or cloud sync is off, '
+          'Firebase will be updated the next time you are online with cloud sync enabled.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Clear on all devices', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || context.read<AuthProvider>().currentUserId != userId) return;
+    final success = await context.read<HistoryProvider>().clearHistory(userId);
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not clear History.')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final pending = context.select((HistoryProvider history) => history.cloudClearPending);
+    final clearing = context.select((HistoryProvider history) => history.isClearing);
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text('History'),
+        actions: [
+          IconButton(
+            tooltip: 'Clear History',
+            onPressed: pending || clearing ? null : _confirmClearHistory,
+            icon: const Icon(Icons.delete_sweep_outlined),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
           tabs: const [
-            Tab(text: 'All-Time Summary'),
+            Tab(text: 'Summary'),
             Tab(text: 'Archived Crops'),
+            Tab(text: 'Expenses'),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          _buildOverviewTab(),
-          _buildArchivedCropsTab(),
+          if (pending)
+            const ListTile(
+              leading: Icon(Icons.cloud_upload_outlined),
+              title: Text('Cloud deletion pending'),
+              subtitle: Text('Connect to the internet with cloud sync enabled to finish.'),
+            ),
+          Expanded(child: TabBarView(
+            controller: _tabController,
+            children: [_buildOverviewTab(), _buildArchivedCropsTab(), _buildArchivedExpensesTab()],
+          )),
         ],
       ),
     );
   }
+
+  Widget _buildArchivedExpensesTab() {
+    return Consumer<HistoryProvider>(builder: (context, history, _) {
+      final byCrop = <String, List<Expense>>{};
+      for (final expense in history.archivedCropExpenses) {
+        byCrop.putIfAbsent(expense.cropId!, () => []).add(expense);
+      }
+      return RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text('Common Expenses', style: Theme.of(context).textTheme.titleLarge),
+            if (history.archivedCommonExpenses.isEmpty)
+              const ListTile(title: Text('No archived common expenses')),
+            ...history.archivedCommonExpenses.map(_archivedExpenseTile),
+            const SizedBox(height: 16),
+            Text('Crop Expenses', style: Theme.of(context).textTheme.titleLarge),
+            if (byCrop.isEmpty)
+              const ListTile(title: Text('No archived crop expenses')),
+            for (final expenses in byCrop.values)
+              ExpansionTile(
+                key: PageStorageKey(expenses.first.cropId),
+                title: Text(expenses.first.cropName ?? 'Archived crop'),
+                children: expenses.map(_archivedExpenseTile).toList(),
+              ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _archivedExpenseTile(Expense expense) => ListTile(
+    title: Text(expense.title),
+    subtitle: Text(DateFormat.yMMMd().format(expense.date)),
+    trailing: Text('Rs. ${expense.amount.toStringAsFixed(2)}'),
+  );
 
   Widget _buildOverviewTab() {
     return Consumer<HistoryProvider>(

@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../models/expense_model.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/finance_provider.dart';
@@ -25,8 +26,7 @@ class _FinanceScreenState extends State<FinanceScreen>
     if (userId != null) {
       final financeProvider = context.read<FinanceProvider>();
       financeProvider.loadCommonExpenses(userId);
-      financeProvider.fetchTotalExpenses(userId);
-      financeProvider.fetchTotalIncome(userId);
+      financeProvider.loadTotals(userId);
       financeProvider.loadIncomeEntries(userId);
     }
   }
@@ -295,7 +295,7 @@ class _FinanceScreenState extends State<FinanceScreen>
                     child: _statCard(
                       context,
                       'Crop-based',
-                      '${finance.cropExpenses.length}',
+                      '${finance.currentCropExpenses.length}',
                       Icons.eco_outlined,
                       AppColors.primary,
                     ),
@@ -434,7 +434,11 @@ class _FinanceScreenState extends State<FinanceScreen>
                   padding: const EdgeInsets.all(16),
                   itemCount: finance.commonExpenses.length,
                   itemBuilder: (context, index) {
-                    return _expenseListItem(context, finance.commonExpenses[index]);
+                    final expense = finance.commonExpenses[index];
+                    return GestureDetector(
+                      onLongPress: () => _confirmArchiveExpense(context, expense),
+                      child: _expenseListItem(context, expense),
+                    );
                   },
                 ),
         );
@@ -566,7 +570,28 @@ class _FinanceScreenState extends State<FinanceScreen>
     );
   }
 
-  Widget _expenseListItem(BuildContext context, dynamic expense) {
+  Future<void> _confirmArchiveExpense(BuildContext context, Expense expense) async {
+    final userId = context.read<AuthProvider>().currentUserId;
+    if (userId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Move expense to History?'),
+        content: Text('“${expense.title}” will still count toward All-Time Expenses.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Move to History')),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    final success = await context.read<FinanceProvider>().archiveCommonExpense(userId, expense.localId);
+    if (!success && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not move expense to History.')));
+    }
+  }
+
+  Widget _expenseListItem(BuildContext context, Expense expense) {
     final dateFormat = DateFormat('MMM dd');
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

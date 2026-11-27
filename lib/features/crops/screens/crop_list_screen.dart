@@ -169,7 +169,11 @@ class _CropListScreenState extends State<CropListScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            Navigator.pushNamed(context, AppRoutes.cropDetail, arguments: crop);
+            Navigator.pushNamed(
+              context,
+              AppRoutes.cropDetail,
+              arguments: crop.localId,
+            );
           },
           onLongPress: (crop.status == 'sold' || crop.status == 'consumed')
               ? () => _confirmArchive(context, crop)

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 
-import '../../../core/services/hive_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../services/settings_service.dart';
@@ -33,9 +33,15 @@ class SettingsProvider extends ChangeNotifier {
 
   /// Manually trigger a full bidirectional sync.
   Future<void> syncNow(AuthProvider authProvider) async {
-    if (_isSyncing) return;
-    if (authProvider.firebaseUid == null) {
+    if (_isSyncing || !isSyncEnabled) return;
+    final uid = authProvider.firebaseUid;
+    if (uid == null) {
       _syncError = 'No Firebase account linked';
+      notifyListeners();
+      return;
+    }
+    if (FirebaseAuth.instance.currentUser?.uid != uid) {
+      _syncError = 'Sign out and sign in again with cloud sync enabled.';
       notifyListeners();
       return;
     }
@@ -45,16 +51,7 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Check if this is a first-time sync (no local data but has Firebase data)
-      final localCrops =
-          HiveService.getItemsByUser(HiveService.cropsBox, authProvider.currentUserId!);
-      if (localCrops.isEmpty) {
-        // Initial pull for existing Firebase users
-        await _syncService.initialPull(authProvider.firebaseUid!);
-      }
-
-      _lastSyncResult =
-          await _syncService.fullSync(authProvider.firebaseUid!);
+      _lastSyncResult = await _syncService.fullSync(uid);
 
       if (_lastSyncResult!.hasErrors) {
         _syncError = _lastSyncResult!.errors.first;

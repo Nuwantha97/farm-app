@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/services/hive_service.dart';
 import '../../../models/crop_model.dart';
+import '../../finance/services/expense_service.dart';
 
 /// Hive-based crop CRUD service.
 /// All data is stored locally in an encrypted Hive box.
@@ -85,22 +86,29 @@ class CropService {
   }
 
   /// Update an existing crop.
-  Future<void> updateCrop(
+  Future<bool> updateCrop(
     String userId,
     String cropId,
     Map<String, dynamic> updateData,
   ) async {
     final key = _key(userId, cropId);
     final existing = HiveService.cropsBox.get(key);
-    if (existing == null) return;
+    if (existing == null ||
+        existing['syncStatus'] == 'deleted' ||
+        existing['isArchived'] == true ||
+        existing['archivedAt'] != null ||
+        HiveService.cropHistoryBox.containsKey(key)) {
+      return false;
+    }
 
     final data = Map<String, dynamic>.from(existing);
     data.addAll(updateData);
-    data['syncStatus'] = 'modified';
+    data['syncStatus'] = data['firebaseId'] == null ? 'pending' : 'modified';
     data['updatedAt'] = DateTime.now().toIso8601String();
 
     await HiveService.cropsBox.put(key, Map<String, dynamic>.from(data));
     debugPrint('CropService: Updated crop $cropId');
+    return true;
   }
 
   /// Archive a crop (soft-remove from active list, keep in history).
@@ -117,18 +125,7 @@ class CropService {
     final now = DateTime.now().toIso8601String();
     final archivedAt = history?['archivedAt'] ?? existing['archivedAt'] ?? now;
 
-    // Save expenses before publishing the archive snapshot.
-    final expPrefix = '${userId}_${cropId}_';
-    for (final entry in HiveService.expensesBox.toMap().entries) {
-      if (!entry.key.toString().startsWith(expPrefix)) continue;
-      final expData = Map<String, dynamic>.from(entry.value);
-      if (expData['syncStatus'] == 'deleted') continue;
-      // Store in expense history with the same key
-      await HiveService.expenseHistoryBox.put(
-        entry.key.toString(),
-        Map<String, dynamic>.from(expData),
-      );
-    }
+    await ExpenseService.snapshotCropExpenses(userId, cropId, existing, archivedAt);
 
     final current = HiveService.cropsBox.get(key);
     if (current == null || current['syncStatus'] == 'deleted') return false;
@@ -213,7 +210,7 @@ class CropService {
         if (referenceDate != null &&
             now.difference(referenceDate).inDays >= 1) {
           data['status'] = 'growing';
-          data['syncStatus'] = 'modified';
+          data['syncStatus'] = data['firebaseId'] == null ? 'pending' : 'modified';
           data['updatedAt'] = now.toIso8601String();
           await HiveService.cropsBox.put(
             entry.key,

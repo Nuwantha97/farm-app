@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/custom_text_field.dart';
 import '../../../core/widgets/custom_button.dart';
@@ -57,6 +58,7 @@ class _LoginScreenState extends State<LoginScreen>
     final success = await authProvider.login(
       _emailController.text.trim(),
       _passwordController.text,
+      syncEnabled: SyncService.isEnabled,
     );
 
     if (success && mounted) {

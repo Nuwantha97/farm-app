@@ -55,6 +55,13 @@ class ExpenseListScreen extends StatelessWidget {
               return Dismissible(
                 key: Key(expense.id),
                 direction: DismissDirection.endToStart,
+                confirmDismiss: expense.cropId != null ? null : (_) async {
+                  final userId = context.read<AuthProvider>().currentUserId;
+                  if (userId != null) {
+                    await context.read<FinanceProvider>().archiveCommonExpense(userId, expense.localId);
+                  }
+                  return false;
+                },
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
@@ -63,7 +70,7 @@ class ExpenseListScreen extends StatelessWidget {
                     color: AppColors.error,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(Icons.delete, color: Colors.white),
+                  child: Icon(expense.cropId == null ? Icons.archive_outlined : Icons.delete, color: Colors.white),
                 ),
                 onDismissed: (_) {
                   final userId = context.read<AuthProvider>().currentUserId;
@@ -72,12 +79,7 @@ class ExpenseListScreen extends StatelessWidget {
                       context.read<FinanceProvider>().deleteCropExpense(
                         userId,
                         expense.cropId!,
-                        expense.id,
-                      );
-                    } else {
-                      context.read<FinanceProvider>().deleteCommonExpense(
-                        userId,
-                        expense.id,
+                        expense.localId,
                       );
                     }
                   }

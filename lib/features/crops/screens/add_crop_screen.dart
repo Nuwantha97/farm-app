@@ -124,14 +124,19 @@ class _AddCropScreenState extends State<AddCropScreen> {
   }
 
   Future<void> _handleSubmit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
+    if (_isLoading || !_formKey.currentState!.validate()) return;
 
     final userId = context.read<AuthProvider>().currentUserId;
-    if (userId == null) return;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to save this crop.')),
+      );
+      return;
+    }
+    setState(() => _isLoading = true);
 
     final cropProvider = context.read<CropProvider>();
+    final bool success;
 
     if (isEditMode) {
       // Update
@@ -160,12 +165,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
         data['consumedEstimatedAmount'] = null;
       }
 
-      final success = await cropProvider.updateCrop(
+      success = await cropProvider.updateCrop(
         userId,
-        widget.crop!.id,
+        widget.crop!.localId,
         data,
       );
-      if (success && mounted) Navigator.pop(context);
     } else {
       // Add
       final crop = Crop(
@@ -181,11 +185,20 @@ class _AddCropScreenState extends State<AddCropScreen> {
             ? double.tryParse(_consumedAmountController.text.trim())
             : null,
       );
-      final success = await cropProvider.addCrop(userId, crop);
-      if (success && mounted) Navigator.pop(context);
+      success = await cropProvider.addCrop(userId, crop);
     }
 
-    if (mounted) setState(() => _isLoading = false);
+    if (!mounted) return;
+    if (success) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(cropProvider.errorMessage ?? 'Could not save the crop.'),
+      ),
+    );
   }
 
   @override

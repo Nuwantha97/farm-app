@@ -80,9 +80,9 @@ class FarmApp extends StatelessWidget {
                     builder: (_) => AddCropScreen(crop: crop),
                   );
                 case AppRoutes.cropDetail:
-                  final crop = settings.arguments as Crop;
+                  final cropId = settings.arguments as String;
                   return MaterialPageRoute(
-                    builder: (_) => CropDetailScreen(crop: crop),
+                    builder: (_) => CropDetailScreen(cropId: cropId),
                   );
                 case AppRoutes.finance:
                   return MaterialPageRoute(

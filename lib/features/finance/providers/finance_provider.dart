@@ -16,6 +16,7 @@ class FinanceProvider extends ChangeNotifier {
 
   List<Expense> _commonExpenses = [];
   List<Expense> _cropExpenses = [];
+  List<Expense> _currentCropExpenses = [];
   List<Map<String, dynamic>> _incomeEntries = [];
   String? _errorMessage;
   double _totalExpenses = 0.0;
@@ -23,11 +24,15 @@ class FinanceProvider extends ChangeNotifier {
 
   StreamSubscription<List<Expense>>? _commonSub;
   StreamSubscription<List<Expense>>? _cropSub;
+  StreamSubscription<List<Expense>>? _currentCropSub;
   StreamSubscription<List<Map<String, dynamic>>>? _incomeSub;
+  StreamSubscription<({double expenses, double income})>? _totalsSub;
 
   List<Expense> get commonExpenses => _commonExpenses;
   List<Expense> get cropExpenses => _cropExpenses;
-  List<Expense> get allExpenses => [..._commonExpenses, ..._cropExpenses];
+  List<Expense> get currentCropExpenses => _currentCropExpenses;
+  List<Expense> get allExpenses => [..._commonExpenses, ..._currentCropExpenses]
+    ..sort((a, b) => b.date.compareTo(a.date));
   List<Map<String, dynamic>> get incomeEntries => _incomeEntries;
   String? get errorMessage => _errorMessage;
   double get totalExpenses => _totalExpenses;
@@ -40,7 +45,6 @@ class FinanceProvider extends ChangeNotifier {
     _commonSub = _service.getCommonExpenses(userId).listen(
       (expenses) {
         _commonExpenses = expenses;
-        _calculateTotal();
         notifyListeners();
       },
       onError: (e) {
@@ -54,13 +58,12 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   /// Load crop expenses for a specific crop.
-  void loadCropExpenses(String userId, String cropId, {String? cropName}) {
+  void loadCropExpenses(String userId, String cropId) {
     _cropSub?.cancel();
     _cropSub =
-        _service.getCropExpenses(userId, cropId, cropName: cropName).listen(
+        _service.getCropExpenses(userId, cropId).listen(
       (expenses) {
         _cropExpenses = expenses;
-        _calculateTotal();
         notifyListeners();
       },
       onError: (e) {
@@ -151,26 +154,33 @@ class FinanceProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> deleteCommonExpense(String userId, String expenseId) async {
+  Future<bool> archiveCommonExpense(String userId, String expenseId) async {
     try {
-      await _service.deleteCommonExpense(userId, expenseId);
-      _triggerSync(userId);
-      return true;
+      final archived = await _service.archiveCommonExpense(userId, expenseId);
+      if (archived) _triggerSync(userId);
+      return archived;
     } catch (e) {
-      _errorMessage = 'Failed to delete expense';
+      _errorMessage = 'Failed to move expense to History';
       notifyListeners();
       return false;
     }
   }
 
-  void _calculateTotal() {
-    _totalExpenses = 0.0;
-    for (var e in _commonExpenses) {
-      _totalExpenses += e.amount;
-    }
-    for (var e in _cropExpenses) {
-      _totalExpenses += e.amount;
-    }
+  void loadTotals(String userId) {
+    _currentCropSub?.cancel();
+    _currentCropSub = _service.getCurrentCropExpenses(userId).listen((expenses) {
+      _currentCropExpenses = expenses;
+      notifyListeners();
+    });
+    _totalsSub?.cancel();
+    _totalsSub = _service.watchTotals(userId).listen((totals) {
+      _totalExpenses = totals.expenses;
+      _totalIncome = totals.income;
+      notifyListeners();
+    }, onError: (Object error) {
+      _errorMessage = 'Failed to calculate totals';
+      notifyListeners();
+    });
   }
 
   void clearError() {
@@ -189,7 +199,9 @@ class FinanceProvider extends ChangeNotifier {
   void dispose() {
     _commonSub?.cancel();
     _cropSub?.cancel();
+    _currentCropSub?.cancel();
     _incomeSub?.cancel();
+    _totalsSub?.cancel();
     super.dispose();
   }
 }

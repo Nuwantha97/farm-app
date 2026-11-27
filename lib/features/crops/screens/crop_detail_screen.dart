@@ -10,9 +10,9 @@ import '../../finance/providers/finance_provider.dart';
 import '../providers/crop_provider.dart';
 
 class CropDetailScreen extends StatefulWidget {
-  final Crop crop;
+  final String cropId;
 
-  const CropDetailScreen({super.key, required this.crop});
+  const CropDetailScreen({super.key, required this.cropId});
 
   @override
   State<CropDetailScreen> createState() => _CropDetailScreenState();
@@ -26,15 +26,24 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
     if (userId != null) {
       context.read<FinanceProvider>().loadCropExpenses(
         userId,
-        widget.crop.id,
-        cropName: widget.crop.name,
+        widget.cropId,
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final crop = widget.crop;
+    final crop = context.select<CropProvider, Crop?>(
+      (provider) => provider.cropById(widget.cropId),
+    );
+    if (crop == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Crop Details')),
+        body: const Center(
+          child: Text('This crop is no longer in the current list.'),
+        ),
+      );
+    }
     final dateFormat = DateFormat('MMM dd, yyyy');
 
     return Scaffold(
@@ -182,7 +191,7 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
                     Navigator.pushNamed(
                       context,
                       AppRoutes.addExpense,
-                      arguments: {'cropId': crop.id, 'cropName': crop.name},
+                      arguments: {'cropId': crop.localId, 'cropName': crop.name},
                     );
                   },
                   icon: const Icon(Icons.add, size: 18),
@@ -342,7 +351,7 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
               final parentNavigator = Navigator.of(context);
               final userId = context.read<AuthProvider>().currentUserId;
               if (userId != null) {
-                await context.read<CropProvider>().deleteCrop(userId, crop.id);
+                await context.read<CropProvider>().deleteCrop(userId, crop.localId);
               }
               if (mounted) {
                 navigator.pop();
