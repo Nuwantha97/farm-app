@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import '../../features/finance/services/expense_service.dart';
 import '../../models/crop_model.dart';
 import '../../models/expense_model.dart';
+import 'farm_reset_service.dart';
 import 'hive_service.dart';
 import 'history_clear_service.dart';
 
@@ -35,12 +36,43 @@ class SyncService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   static final _runs = <String, Future<SyncResult>>{};
   static final _lastPullTime = <String, DateTime>{};
+  static final _resets = <String>{};
+  final _farmGenerations = <String, String?>{};
 
   static bool get isEnabled =>
       HiveService.settingsBox.get('isSyncEnabled', defaultValue: false) == true;
 
   bool _canSync(String uid) =>
-      isEnabled && FirebaseAuth.instance.currentUser?.uid == uid;
+      isEnabled &&
+      FirebaseAuth.instance.currentUser?.uid == uid &&
+      !_resets.contains(uid);
+
+  Map<String, dynamic> _farmWrite(String uid, Map<String, dynamic> data) {
+    final generation = _farmGenerations[uid];
+    return generation == null ? data : {...data, 'farmGeneration': generation};
+  }
+
+  Future<void> resetFarmData(String userId, String uid) async {
+    if (!isEnabled ||
+        _getFirebaseUid(userId) != uid ||
+        FirebaseAuth.instance.currentUser?.uid != uid) {
+      throw StateError('Sign in with cloud sync enabled to reset farm data.');
+    }
+    if (!await isOnline()) {
+      throw StateError('Connect to the internet to reset farm data.');
+    }
+    if (!_resets.add(uid)) {
+      throw StateError('A farm reset is already in progress.');
+    }
+    final paused = FarmResetService.pause(userId);
+    try {
+      await _runs[uid]?.timeout(const Duration(seconds: 15));
+      await FarmResetService.reset(userId, _db.collection('users').doc(uid));
+    } finally {
+      _resets.remove(uid);
+      if (paused) FarmResetService.resume(userId);
+    }
+  }
 
   /// Check internet connectivity.
   Future<bool> isOnline() async {
@@ -113,6 +145,9 @@ class SyncService {
 
   Future<SyncResult> _performSync(String firebaseUid) async {
     if (!isEnabled) return SyncResult();
+    if (_resets.contains(firebaseUid)) {
+      return SyncResult(errors: ['A farm reset is in progress.']);
+    }
     if (!_canSync(firebaseUid)) {
       return SyncResult(errors: ['Firebase sign-in required']);
     }
@@ -129,10 +164,15 @@ class SyncService {
     try {
       final userId = _getLocalUserId(firebaseUid);
       if (userId != null) {
+        final account = _db.collection('users').doc(firebaseUid);
+        final generation = await FarmResetService.prepareSync(userId, account);
+        if (!_canSync(firebaseUid)) return SyncResult();
+        _farmGenerations[firebaseUid] = generation;
         await HistoryClearService.synchronize(
           userId,
-          _db.collection('users').doc(firebaseUid),
+          account,
           () => _canSync(firebaseUid),
+          farmGeneration: generation,
         );
       }
       for (final sync in [
@@ -165,6 +205,8 @@ class SyncService {
     } catch (e) {
       errors.add('Sync failed: $e');
       debugPrint('SyncService: Sync error: $e');
+    } finally {
+      _farmGenerations.remove(firebaseUid);
     }
 
     return SyncResult(
@@ -268,7 +310,7 @@ class SyncService {
     String documentId,
   ) async {
     // Record the new document ID while preserving any edit made during upload.
-    if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+    if (!_canSync(uid)) return;
     final current = box.get(key);
     if (current == null) {
       await box.put(key, {
@@ -329,7 +371,9 @@ class SyncService {
             (syncStatus == 'modified' && data['firebaseId'] == null)) {
           // Create in Firebase
           final crop = Crop.fromMap(data);
-          final docRef = await cropsRef.add(crop.toMap());
+          final docRef = await cropsRef.add(
+            _farmWrite(firebaseUid, crop.toMap()),
+          );
           // Update local with firebaseId
           await _confirmUpload(
             firebaseUid,
@@ -359,7 +403,9 @@ class SyncService {
                   localUpdated.isAtSameMomentAs(remoteUpdated)) {
                 // Local wins
                 final crop = Crop.fromMap(data);
-                await cropsRef.doc(firebaseId).set(crop.toMap());
+                await cropsRef
+                    .doc(firebaseId)
+                    .set(_farmWrite(firebaseUid, crop.toMap()));
               } else {
                 // Remote wins — update local
                 final remoteCrop = Crop.fromFirestore(remoteDoc);
@@ -374,7 +420,9 @@ class SyncService {
             } else {
               // Remote deleted — re-create
               final crop = Crop.fromMap(data);
-              final docRef = await cropsRef.add(crop.toMap());
+              final docRef = await cropsRef.add(
+                _farmWrite(firebaseUid, crop.toMap()),
+              );
               documentId = docRef.id;
             }
             await _confirmUpload(
@@ -464,7 +512,9 @@ class SyncService {
             pushed++;
           } else if (syncStatus == 'pending') {
             final expense = Expense.fromMap(data);
-            final docRef = await expensesRef.add(expense.toMap());
+            final docRef = await expensesRef.add(
+              _farmWrite(firebaseUid, expense.toMap()),
+            );
             await _confirmUpload(
               firebaseUid,
               HiveService.expensesBox,
@@ -477,7 +527,9 @@ class SyncService {
             final fbId = data['firebaseId'];
             if (fbId != null) {
               final expense = Expense.fromMap(data);
-              await expensesRef.doc(fbId).set(expense.toMap());
+              await expensesRef
+                  .doc(fbId)
+                  .set(_farmWrite(firebaseUid, expense.toMap()));
               await _confirmUpload(
                 firebaseUid,
                 HiveService.expensesBox,
@@ -553,7 +605,7 @@ class SyncService {
         } else if (syncStatus == 'pending') {
           final expense = Expense.fromMap(data);
           final docRef = commonRef.doc(expense.localId);
-          await docRef.set(expense.toMap());
+          await docRef.set(_farmWrite(firebaseUid, expense.toMap()));
           await _confirmUpload(
             firebaseUid,
             HiveService.commonExpensesBox,
@@ -566,7 +618,9 @@ class SyncService {
           final fbId = data['firebaseId'];
           if (fbId != null) {
             final expense = Expense.fromMap(data);
-            await commonRef.doc(fbId).set(expense.toMap());
+            await commonRef
+                .doc(fbId)
+                .set(_farmWrite(firebaseUid, expense.toMap()));
             await _confirmUpload(
               firebaseUid,
               HiveService.commonExpensesBox,
@@ -651,10 +705,13 @@ class SyncService {
             expense.firebaseId;
         if (data['syncStatus'] != 'synced') {
           final batch = _db.batch();
-          batch.set(archiveRef.doc(expense.localId), {
-            ..._encodeExpenseHistory(data, expense),
-            'originalFirebaseId': originalId,
-          });
+          batch.set(
+            archiveRef.doc(expense.localId),
+            _farmWrite(uid, {
+              ..._encodeExpenseHistory(data, expense),
+              'originalFirebaseId': originalId,
+            }),
+          );
           batch.delete(currentRef.doc(originalId ?? expense.localId));
           await batch.commit();
           if (!_canSync(uid)) break;
@@ -836,7 +893,9 @@ class SyncService {
         if (data['syncStatus'] == 'deleted') continue;
         if (data['historySynced'] != true) {
           final crop = Crop.fromMap({...data, 'localId': cropId});
-          await document.set(crop.copyWith(isArchived: true).toMap());
+          await document.set(
+            _farmWrite(firebaseUid, crop.copyWith(isArchived: true).toMap()),
+          );
           if (!_canSync(firebaseUid)) break;
           final latest = crops.get(entry.key);
           if (_sameVersion(latest, data)) {
@@ -907,10 +966,13 @@ class SyncService {
           await expenseRef
               .doc(item.key)
               .set(
-                _encodeExpenseHistory({
-                  ...snapshot,
-                  'archivedAt': snapshot['archivedAt'] ?? data['archivedAt'],
-                }, expense),
+                _farmWrite(
+                  firebaseUid,
+                  _encodeExpenseHistory({
+                    ...snapshot,
+                    'archivedAt': snapshot['archivedAt'] ?? data['archivedAt'],
+                  }, expense),
+                ),
               );
           if (_canSync(firebaseUid) && expenses.containsKey(item.value.key)) {
             await expenses.put(item.value.key, {

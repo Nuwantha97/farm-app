@@ -100,6 +100,17 @@ class HiveService {
     debugPrint('HiveService: Cleared all user data boxes');
   }
 
+  /// Remove one account's farm records while preserving its profile and settings.
+  static Future<void> clearFarmDataForUser(String userId) async {
+    for (final box in [
+      _cropsBox, _expensesBox, _commonExpensesBox, _cropHistoryBox,
+      _expenseHistoryBox, _commonExpenseHistoryBox,
+    ]) {
+      final keys = box.keys.whereType<String>().where((key) => key.startsWith('${userId}_')).toList();
+      await box.deleteAll(keys);
+    }
+  }
+
   /// Clear absolutely everything including user credentials (for account deletion).
   static Future<void> clearAllData() async {
     await _usersBox.clear();

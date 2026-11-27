@@ -7,6 +7,9 @@ class HistoryClearService {
   static String pendingKey(String userId) => 'historyClearPending/$userId';
   static String _cutoffKey(String userId) => 'historyClearedThrough/$userId';
 
+  static Future<void> forget(String userId) => HiveService.settingsBox
+      .deleteAll([pendingKey(userId), _cutoffKey(userId)]);
+
   static DocumentReference<Map<String, dynamic>> marker(
     DocumentReference<Map<String, dynamic>> account,
   ) => account.collection('history').doc('archive');
@@ -139,8 +142,9 @@ class HistoryClearService {
   static Future<void> synchronize(
     String userId,
     DocumentReference<Map<String, dynamic>> account,
-    bool Function() canSync,
-  ) async {
+    bool Function() canSync, {
+    String? farmGeneration,
+  }) async {
     final markerRef = marker(account);
     final request = pending(userId);
     final requestedAt = _date(request?['cutoff']);
@@ -164,6 +168,7 @@ class HistoryClearService {
         if (!canSync()) return previous;
         transaction.set(markerRef, {
           'clearedThrough': Timestamp.fromDate(requestedAt),
+          'farmGeneration': ?farmGeneration,
         });
         return requestedAt;
       });
@@ -260,10 +265,11 @@ class HistoryClearService {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
     bool Function() canSync,
   ) async {
-    for (var start = 0; start < docs.length; start += 200) {
+    // Reset rules can read two marker snapshots per write.
+    for (var start = 0; start < docs.length; start += 10) {
       _requireSync(canSync);
       final batch = db.batch();
-      for (final doc in docs.skip(start).take(200)) {
+      for (final doc in docs.skip(start).take(10)) {
         batch.delete(doc.reference);
       }
       await batch.commit();

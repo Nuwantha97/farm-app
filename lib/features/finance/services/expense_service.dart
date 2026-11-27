@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/farm_reset_service.dart';
 import '../../../core/services/hive_service.dart';
 import '../../../models/expense_model.dart';
 
@@ -116,6 +117,7 @@ class ExpenseService {
     String cropId,
     Expense expense,
   ) async {
+    FarmResetService.requireWritable(userId);
     final cropKey = '${userId}_$cropId';
     final crop = HiveService.cropsBox.get(cropKey);
     if (crop == null ||
@@ -144,6 +146,7 @@ class ExpenseService {
 
   /// Add a common expense (not linked to any crop).
   Future<void> addCommonExpense(String userId, Expense expense) async {
+    FarmResetService.requireWritable(userId);
     final expenseId = _uuid.v4();
     final newExpense = Expense(
       id: expenseId,
@@ -276,6 +279,7 @@ class ExpenseService {
     String cropId,
     String expenseId,
   ) async {
+    FarmResetService.requireWritable(userId);
     var key = _cropExpenseKey(userId, cropId, expenseId);
     final legacyCropId = _legacyExpenseCropId(userId, cropId);
     if (legacyCropId != null && !HiveService.expensesBox.containsKey(key)) {
@@ -297,6 +301,7 @@ class ExpenseService {
 
   /// Save an archive copy before hiding the current row.
   Future<bool> archiveCommonExpense(String userId, String expenseId) async {
+    FarmResetService.requireWritable(userId);
     final key = _commonExpenseKey(userId, expenseId);
     if (HiveService.commonExpenseHistoryBox.containsKey(key)) return true;
     final existing = HiveService.commonExpensesBox.get(key);

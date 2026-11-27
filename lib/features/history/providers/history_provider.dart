@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/services/farm_reset_service.dart';
 import '../../../core/services/history_clear_service.dart';
 import '../../../core/services/hive_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -100,6 +101,7 @@ class HistoryProvider extends ChangeNotifier {
     _isClearing = true;
     notifyListeners();
     try {
+      FarmResetService.requireWritable(userId);
       await HistoryClearService.queue(userId);
       unawaited(SyncService().immediateSync(userId));
       return true;

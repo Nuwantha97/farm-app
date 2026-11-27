@@ -75,6 +75,8 @@ class SettingsScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   _logoutCard(context),
                   const SizedBox(height: 12),
+                  _resetFarmCard(context),
+                  const SizedBox(height: 12),
                   _deleteAccountCard(context),
                   const SizedBox(height: 28),
 
@@ -160,7 +162,7 @@ class SettingsScreen extends StatelessWidget {
                         states.contains(WidgetState.selected)
                             ? AppColors.primary
                             : null),
-                    onChanged: settings.isSyncing
+                    onChanged: settings.isSyncing || settings.isResetting
                         ? null
                         : (value) {
                             settings.toggleSync(value, auth);
@@ -313,6 +315,66 @@ class SettingsScreen extends StatelessWidget {
   }
 
   // ── Delete Account Card ───────────────────────────────────
+
+  Widget _resetFarmCard(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    return _actionCard(
+      context,
+      icon: Icons.restart_alt,
+      iconColor: AppColors.error,
+      title: 'Reset Farm Data',
+      subtitle: settings.isResetting
+          ? 'Resetting farm data…'
+          : settings.isSyncEnabled
+          ? 'Delete all farm records and keep your account'
+          : 'Turn on Cloud Sync to reset farm data',
+      onTap: settings.isResetting || !settings.isSyncEnabled
+          ? null
+          : () => _confirmFarmReset(context),
+    );
+  }
+
+  Future<void> _confirmFarmReset(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    final userId = auth.currentUserId;
+    var typed = '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Reset Farm Data?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'This permanently deletes all current and archived crops and '
+                'expenses on every device. Your account and settings will stay. '
+                'You must be online with cloud sync enabled.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(labelText: 'Type RESET to confirm'),
+                onChanged: (value) => setState(() => typed = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            TextButton(
+              onPressed: typed.trim() == 'RESET' ? () => Navigator.pop(dialogContext, true) : null,
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Reset Farm Data'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !context.mounted || auth.currentUserId != userId) return;
+    final error = await context.read<SettingsProvider>().resetFarmData(auth);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error ?? 'Farm data reset.')));
+    }
+  }
 
   Widget _deleteAccountCard(BuildContext context) {
     return _actionCard(
@@ -489,7 +551,7 @@ class SettingsScreen extends StatelessWidget {
     required Color iconColor,
     required String title,
     required String subtitle,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
     return GestureDetector(
       onTap: onTap,

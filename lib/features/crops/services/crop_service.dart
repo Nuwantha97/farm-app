@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/farm_reset_service.dart';
 import '../../../core/services/hive_service.dart';
 import '../../../models/crop_model.dart';
 import '../../finance/services/expense_service.dart';
@@ -18,6 +19,7 @@ class CropService {
 
   /// Add a new crop to Hive.
   Future<String> addCrop(String userId, Crop crop) async {
+    FarmResetService.requireWritable(userId);
     final cropId = _uuid.v4();
     final newCrop = crop.copyWith(
       id: cropId,
@@ -91,6 +93,7 @@ class CropService {
     String cropId,
     Map<String, dynamic> updateData,
   ) async {
+    FarmResetService.requireWritable(userId);
     final key = _key(userId, cropId);
     final existing = HiveService.cropsBox.get(key);
     if (existing == null ||
@@ -115,6 +118,7 @@ class CropService {
   /// Only works for 'sold' or 'consumed' crops.
   /// Copies the crop snapshot and its expenses into history boxes.
   Future<bool> archiveCrop(String userId, String cropId) async {
+    FarmResetService.requireWritable(userId);
     final key = _key(userId, cropId);
     final existing = HiveService.cropsBox.get(key);
     if (existing == null || existing['syncStatus'] == 'deleted') return false;
@@ -126,6 +130,7 @@ class CropService {
     final archivedAt = history?['archivedAt'] ?? existing['archivedAt'] ?? now;
 
     await ExpenseService.snapshotCropExpenses(userId, cropId, existing, archivedAt);
+    FarmResetService.requireWritable(userId);
 
     final current = HiveService.cropsBox.get(key);
     if (current == null || current['syncStatus'] == 'deleted') return false;
@@ -156,6 +161,7 @@ class CropService {
 
   /// Delete a crop permanently (marks as deleted for sync, removes from history too).
   Future<void> deleteCrop(String userId, String cropId) async {
+    FarmResetService.requireWritable(userId);
     final key = _key(userId, cropId);
     final existing = HiveService.cropsBox.get(key);
 
@@ -192,6 +198,7 @@ class CropService {
 
   /// Auto-transition crops from 'planted' to 'growing' after 1 day.
   Future<void> autoTransitionPlantedCrops(String userId) async {
+    if (FarmResetService.isBlocked(userId)) return;
     try {
       final entries = HiveService.getItemsByUser(HiveService.cropsBox, userId);
       final now = DateTime.now();
