@@ -263,6 +263,21 @@ The app uses **Provider** (`ChangeNotifierProvider`) for reactive state manageme
    flutter run
    ```
 
+### GitHub release APKs
+
+When Release Please creates a GitHub release, GitHub Actions builds a signed APK from the release commit and attaches it under **Assets**. Add these repository secrets under **Settings → Secrets and variables → Actions** before merging the next release PR. [Release workflow](.github/workflows/release-please.yml)
+
+| Secret | Value |
+| --- | --- |
+| `FIREBASE_OPTIONS_DART` | Contents of `lib/firebase_options.dart` |
+| `GOOGLE_SERVICES_JSON` | Contents of `android/app/google-services.json` |
+| `ANDROID_KEYSTORE_BASE64` | Base64-encoded Android signing keystore |
+| `ANDROID_STORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Signing key alias |
+| `ANDROID_KEY_PASSWORD` | Signing key password |
+
+Use the same signing key across releases to let Android install APK updates over earlier releases.
+
 ### Firebase Emulator (Optional)
 
 Start the local Auth and Firestore emulators for development:
