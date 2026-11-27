@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/Nuwantha97/farm-app/compare/farm_app-v1.4.0...farm_app-v1.5.0) (2026-11-27)
+
+
+### Features
+
+* implement farm reset functionality with Firestore integration ([367b1d0](https://github.com/Nuwantha97/farm-app/commit/367b1d0793ec00804c8a0a12fe75829fdac56a4c))
+
 ## [1.4.0](https://github.com/Nuwantha97/farm-app/compare/farm_app-v1.3.0...farm_app-v1.4.0) (2026-11-27)
 
 
