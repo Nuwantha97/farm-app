@@ -202,7 +202,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   ),
                   items: crops.map((crop) {
                     return DropdownMenuItem(
-                      value: crop.id,
+                      value: crop.localId,
                       child: Text(crop.name),
                     );
                   }).toList(),

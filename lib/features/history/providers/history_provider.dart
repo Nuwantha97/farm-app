@@ -16,6 +16,7 @@ class HistoryProvider extends ChangeNotifier {
   bool _isLoading = false;
 
   StreamSubscription<List<Crop>>? _historySub;
+  StreamSubscription<({double expenses, double income})>? _totalsSub;
 
   List<Crop> get archivedCrops => _archivedCrops;
   double get allTimeTotalIncome => _allTimeTotalIncome;
@@ -42,8 +43,15 @@ class HistoryProvider extends ChangeNotifier {
       },
     );
 
-    // Fetch all-time totals
-    _fetchAllTimeTotals(userId);
+    _totalsSub?.cancel();
+    _totalsSub = _expenseService.watchTotals(userId, allTime: true).listen(
+      (totals) {
+        _allTimeTotalExpenses = totals.expenses;
+        _allTimeTotalIncome = totals.income;
+        notifyListeners();
+      },
+      onError: (Object error) => debugPrint('History totals: $error'),
+    );
 
     // Background pull
     SyncService().backgroundPull(userId);
@@ -70,6 +78,7 @@ class HistoryProvider extends ChangeNotifier {
   @override
   void dispose() {
     _historySub?.cancel();
+    _totalsSub?.cancel();
     super.dispose();
   }
 }

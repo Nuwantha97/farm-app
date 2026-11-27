@@ -24,6 +24,7 @@ class FinanceProvider extends ChangeNotifier {
   StreamSubscription<List<Expense>>? _commonSub;
   StreamSubscription<List<Expense>>? _cropSub;
   StreamSubscription<List<Map<String, dynamic>>>? _incomeSub;
+  StreamSubscription<({double expenses, double income})>? _totalsSub;
 
   List<Expense> get commonExpenses => _commonExpenses;
   List<Expense> get cropExpenses => _cropExpenses;
@@ -40,7 +41,6 @@ class FinanceProvider extends ChangeNotifier {
     _commonSub = _service.getCommonExpenses(userId).listen(
       (expenses) {
         _commonExpenses = expenses;
-        _calculateTotal();
         notifyListeners();
       },
       onError: (e) {
@@ -60,7 +60,6 @@ class FinanceProvider extends ChangeNotifier {
         _service.getCropExpenses(userId, cropId, cropName: cropName).listen(
       (expenses) {
         _cropExpenses = expenses;
-        _calculateTotal();
         notifyListeners();
       },
       onError: (e) {
@@ -163,14 +162,16 @@ class FinanceProvider extends ChangeNotifier {
     }
   }
 
-  void _calculateTotal() {
-    _totalExpenses = 0.0;
-    for (var e in _commonExpenses) {
-      _totalExpenses += e.amount;
-    }
-    for (var e in _cropExpenses) {
-      _totalExpenses += e.amount;
-    }
+  void loadTotals(String userId) {
+    _totalsSub?.cancel();
+    _totalsSub = _service.watchTotals(userId).listen((totals) {
+      _totalExpenses = totals.expenses;
+      _totalIncome = totals.income;
+      notifyListeners();
+    }, onError: (Object error) {
+      _errorMessage = 'Failed to calculate totals';
+      notifyListeners();
+    });
   }
 
   void clearError() {
@@ -190,6 +191,7 @@ class FinanceProvider extends ChangeNotifier {
     _commonSub?.cancel();
     _cropSub?.cancel();
     _incomeSub?.cancel();
+    _totalsSub?.cancel();
     super.dispose();
   }
 }

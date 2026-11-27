@@ -109,6 +109,8 @@ class Crop {
   Map<String, dynamic> toMap() {
     return {
       'name': name,
+      // Existing Firestore create rules also require the crop type.
+      'type': name,
       'status': status,
       'plantedDate':
           plantedDate != null ? Timestamp.fromDate(plantedDate!) : null,

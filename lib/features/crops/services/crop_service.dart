@@ -85,22 +85,29 @@ class CropService {
   }
 
   /// Update an existing crop.
-  Future<void> updateCrop(
+  Future<bool> updateCrop(
     String userId,
     String cropId,
     Map<String, dynamic> updateData,
   ) async {
     final key = _key(userId, cropId);
     final existing = HiveService.cropsBox.get(key);
-    if (existing == null) return;
+    if (existing == null ||
+        existing['syncStatus'] == 'deleted' ||
+        existing['isArchived'] == true ||
+        existing['archivedAt'] != null ||
+        HiveService.cropHistoryBox.containsKey(key)) {
+      return false;
+    }
 
     final data = Map<String, dynamic>.from(existing);
     data.addAll(updateData);
-    data['syncStatus'] = 'modified';
+    data['syncStatus'] = data['firebaseId'] == null ? 'pending' : 'modified';
     data['updatedAt'] = DateTime.now().toIso8601String();
 
     await HiveService.cropsBox.put(key, Map<String, dynamic>.from(data));
     debugPrint('CropService: Updated crop $cropId');
+    return true;
   }
 
   /// Archive a crop (soft-remove from active list, keep in history).
@@ -213,7 +220,7 @@ class CropService {
         if (referenceDate != null &&
             now.difference(referenceDate).inDays >= 1) {
           data['status'] = 'growing';
-          data['syncStatus'] = 'modified';
+          data['syncStatus'] = data['firebaseId'] == null ? 'pending' : 'modified';
           data['updatedAt'] = now.toIso8601String();
           await HiveService.cropsBox.put(
             entry.key,

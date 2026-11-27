@@ -18,6 +18,9 @@ class CropProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  Crop? cropById(String cropId) =>
+      _crops.where((crop) => crop.localId == cropId).firstOrNull;
+
   /// Fire-and-forget sync after a local CRUD operation.
   void _triggerSync(String userId) {
     _syncService.immediateSync(userId).catchError((_) {});
@@ -71,7 +74,12 @@ class CropProvider extends ChangeNotifier {
     Map<String, dynamic> data,
   ) async {
     try {
-      await _service.updateCrop(userId, cropId, data);
+      final updated = await _service.updateCrop(userId, cropId, data);
+      if (!updated) {
+        _errorMessage = 'This crop is no longer in the current list.';
+        notifyListeners();
+        return false;
+      }
       _triggerSync(userId);
       return true;
     } catch (e) {

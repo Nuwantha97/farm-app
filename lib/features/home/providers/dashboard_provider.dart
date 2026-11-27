@@ -16,6 +16,7 @@ class DashboardProvider extends ChangeNotifier {
   bool _isLoading = false;
 
   StreamSubscription? _cropsSub;
+  StreamSubscription<({double expenses, double income})>? _totalsSub;
 
   int get totalCrops => _totalCrops;
   int get activeCrops => _activeCrops;
@@ -48,23 +49,15 @@ class DashboardProvider extends ChangeNotifier {
       );
     });
 
-    // Fetch total expenses
-    _expenseService
-        .getTotalExpenses(userId)
-        .then((total) {
-          _totalExpenses = total;
-          notifyListeners();
-        })
-        .catchError((_) {});
-
-    // Fetch total income
-    _expenseService
-        .getTotalIncome(userId)
-        .then((total) {
-          _totalIncome = total;
-          notifyListeners();
-        })
-        .catchError((_) {});
+    _totalsSub?.cancel();
+    _totalsSub = _expenseService.watchTotals(userId).listen(
+      (totals) {
+        _totalExpenses = totals.expenses;
+        _totalIncome = totals.income;
+        notifyListeners();
+      },
+      onError: (Object error) => debugPrint('Dashboard totals: $error'),
+    );
 
     // Fetch from Firebase in background (if sync enabled)
     SyncService().backgroundPull(userId);
@@ -88,6 +81,7 @@ class DashboardProvider extends ChangeNotifier {
   @override
   void dispose() {
     _cropsSub?.cancel();
+    _totalsSub?.cancel();
     super.dispose();
   }
 }

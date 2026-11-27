@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 
 import '../../models/crop_model.dart';
 import '../../models/expense_model.dart';
@@ -29,8 +31,14 @@ class SyncResult {
 /// Sync only runs when user has enabled sync AND internet is available.
 class SyncService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  static bool _isSyncing = false;
-  static DateTime? _lastPullTime;
+  static final _runs = <String, Future<SyncResult>>{};
+  static final _lastPullTime = <String, DateTime>{};
+
+  static bool get isEnabled =>
+      HiveService.settingsBox.get('isSyncEnabled', defaultValue: false) == true;
+
+  bool _canSync(String uid) =>
+      isEnabled && FirebaseAuth.instance.currentUser?.uid == uid;
 
   /// Check internet connectivity.
   Future<bool> isOnline() async {
@@ -55,24 +63,19 @@ class SyncService {
   /// enabled, internet is available, and not already syncing.
   /// Includes a 30-second cooldown to avoid excessive Firebase reads.
   Future<void> backgroundPull(String localUserId) async {
-    if (_isSyncing) return;
-
-    // Cooldown: don't pull more than once per 30 seconds
-    if (_lastPullTime != null &&
-        DateTime.now().difference(_lastPullTime!).inSeconds < 30) {
+    if (!isEnabled) return;
+    final firebaseUid = _getFirebaseUid(localUserId);
+    if (firebaseUid == null) return;
+    final lastPull = _lastPullTime[firebaseUid];
+    if (_runs.containsKey(firebaseUid) ||
+        (lastPull != null &&
+            DateTime.now().difference(lastPull).inSeconds < 30)) {
       return;
     }
 
-    final isSyncEnabled =
-        HiveService.settingsBox.get('isSyncEnabled', defaultValue: false);
-    if (isSyncEnabled != true) return;
-
-    final firebaseUid = _getFirebaseUid(localUserId);
-    if (firebaseUid == null) return;
-
     final result = await fullSync(firebaseUid);
     if (!result.hasErrors) {
-      _lastPullTime = DateTime.now();
+      _lastPullTime[firebaseUid] = DateTime.now();
     }
     debugPrint('SyncService: Background pull complete');
   }
@@ -80,20 +83,18 @@ class SyncService {
   /// Immediate sync triggered after a CRUD operation or pull-to-refresh.
   ///
   /// Skips the 30-second cooldown but still respects the sync-enabled
-  /// setting and the [_isSyncing] guard.
+  /// setting. Requests received during a sync share a follow-up run.
   Future<void> immediateSync(String localUserId) async {
-    if (_isSyncing) return;
-
-    final isSyncEnabled =
-        HiveService.settingsBox.get('isSyncEnabled', defaultValue: false);
-    if (isSyncEnabled != true) return;
-
+    if (!isEnabled) return;
     final firebaseUid = _getFirebaseUid(localUserId);
     if (firebaseUid == null) return;
+    final inProgress = _runs[firebaseUid];
+    if (inProgress != null) await inProgress;
+    if (!isEnabled || _getFirebaseUid(localUserId) != firebaseUid) return;
 
     final result = await fullSync(firebaseUid);
     if (!result.hasErrors) {
-      _lastPullTime = DateTime.now();
+      _lastPullTime[firebaseUid] = DateTime.now();
     }
     debugPrint('SyncService: Immediate sync complete');
   }
@@ -101,61 +102,58 @@ class SyncService {
   // ── Full bidirectional sync ─────────────────────────────────
 
   /// Perform a full bidirectional sync.
-  Future<SyncResult> fullSync(String firebaseUid) async {
-    if (_isSyncing) {
-      return SyncResult();
+  Future<SyncResult> fullSync(String firebaseUid) => _runs.putIfAbsent(
+    firebaseUid,
+    () => _performSync(firebaseUid).whenComplete(() {
+      _runs.remove(firebaseUid);
+    }),
+  );
+
+  Future<SyncResult> _performSync(String firebaseUid) async {
+    if (!isEnabled) return SyncResult();
+    if (!_canSync(firebaseUid)) {
+      return SyncResult(errors: ['Firebase sign-in required']);
     }
 
     if (!await isOnline()) {
       return SyncResult(errors: ['No internet connection']);
     }
 
-    _isSyncing = true;
     int pushed = 0;
     int pulled = 0;
     int conflicts = 0;
     final errors = <String>[];
 
     try {
-      // Sync crops
-      final cropResult = await _syncCrops(firebaseUid);
-      pushed += cropResult.pushed;
-      pulled += cropResult.pulled;
-      conflicts += cropResult.conflicts;
-      errors.addAll(cropResult.errors);
-
-      // Sync crop expenses
-      final expResult = await _syncExpenses(firebaseUid);
-      pushed += expResult.pushed;
-      pulled += expResult.pulled;
-      conflicts += expResult.conflicts;
-      errors.addAll(expResult.errors);
-
-      // Sync common expenses
-      final commonResult = await _syncCommonExpenses(firebaseUid);
-      pushed += commonResult.pushed;
-      pulled += commonResult.pulled;
-      conflicts += commonResult.conflicts;
-      errors.addAll(commonResult.errors);
-
-      // Sync crop history (archived crops)
-      final historyResult = await _syncCropHistory(firebaseUid);
-      pushed += historyResult.pushed;
-      pulled += historyResult.pulled;
-      conflicts += historyResult.conflicts;
-      errors.addAll(historyResult.errors);
+      for (final sync in [
+        _syncCrops,
+        _syncExpenses,
+        _syncCommonExpenses,
+        _syncCropHistory,
+      ]) {
+        if (!_canSync(firebaseUid)) break;
+        final result = await sync(firebaseUid);
+        pushed += result.pushed;
+        pulled += result.pulled;
+        conflicts += result.conflicts;
+        errors.addAll(result.errors);
+      }
 
       // Update last sync time
-      await HiveService.settingsBox
-          .put('lastSyncTime', DateTime.now().toIso8601String());
+      if (_canSync(firebaseUid) && errors.isEmpty) {
+        await HiveService.settingsBox.put(
+          'lastSyncTime',
+          DateTime.now().toIso8601String(),
+        );
+      }
 
-      debugPrint('SyncService: Full sync complete — '
-          'pushed: $pushed, pulled: $pulled, conflicts: $conflicts');
+      debugPrint(
+        'SyncService: Full sync complete — '
+        'pushed: $pushed, pulled: $pulled, conflicts: $conflicts',
+      );
     } catch (e) {
       errors.add('Sync failed: $e');
       debugPrint('SyncService: Sync error: $e');
-    } finally {
-      _isSyncing = false;
     }
 
     return SyncResult(
@@ -166,101 +164,103 @@ class SyncService {
     );
   }
 
-  // ── Initial pull (for existing Firebase users) ──────────────
-
-  /// Pull all data from Firebase for a user who has no local data yet.
-  Future<void> initialPull(String firebaseUid) async {
-    if (!await isOnline()) return;
-
-    debugPrint('SyncService: Starting initial pull for $firebaseUid');
-
-    final userId = _getLocalUserId(firebaseUid);
-    if (userId == null) return;
-
-    // Pull crops
-    final cropsSnap = await _db
-        .collection('users')
-        .doc(firebaseUid)
-        .collection('crops')
-        .get();
-
-    for (final doc in cropsSnap.docs) {
-      final crop = Crop.fromFirestore(doc);
-      final key = '${userId}_${crop.localId}';
-      if (!HiveService.cropsBox.containsKey(key)) {
-        await HiveService.cropsBox.put(
-          key,
-          Map<String, dynamic>.from(crop.toHiveMap()),
-        );
-
-        // Pull expenses for this crop
-        final expSnap = await doc.reference.collection('expenses').get();
-        for (final expDoc in expSnap.docs) {
-          final expense = Expense.fromFirestore(expDoc, cropId: doc.id);
-          final expKey = '${userId}_${doc.id}_${expense.localId}';
-          if (!HiveService.expensesBox.containsKey(expKey)) {
-            await HiveService.expensesBox.put(
-              expKey,
-              Map<String, dynamic>.from(expense.toHiveMap()),
-            );
-          }
-        }
+  Future<int> _pull(
+    String uid,
+    CollectionReference<Map<String, dynamic>> collection,
+    Box<Map> box,
+    String prefix,
+    Map<String, dynamic> Function(QueryDocumentSnapshot<Map<String, dynamic>>)
+    decode, {
+    String? legacyPrefix,
+    bool removeMissing = true,
+  }) async {
+    if (!_canSync(uid)) return 0;
+    final snapshot = await collection.get(
+      const GetOptions(source: Source.server),
+    );
+    var changes = 0;
+    for (final doc in snapshot.docs) {
+      if (!_canSync(uid)) return changes;
+      if (doc.metadata.hasPendingWrites) continue;
+      final localId = doc.data()['localId'] ?? doc.id;
+      final key = '$prefix$localId';
+      final legacyKey = legacyPrefix == null ? null : '$legacyPrefix$localId';
+      final storageKey =
+          legacyKey != null &&
+              !box.containsKey(key) &&
+              box.containsKey(legacyKey)
+          ? legacyKey
+          : key;
+      final local = box.get(storageKey);
+      final remoteUpdated = (doc.data()['updatedAt'] as Timestamp?)?.toDate();
+      final localUpdated = DateTime.tryParse(
+        local?['updatedAt']?.toString() ?? '',
+      );
+      if (local == null ||
+          (local['syncStatus'] == 'synced' &&
+              remoteUpdated != null &&
+              (localUpdated == null || remoteUpdated.isAfter(localUpdated)))) {
+        await box.put(storageKey, decode(doc));
+        changes++;
       }
     }
 
-    // Pull common expenses
-    final commonSnap = await _db
-        .collection('users')
-        .doc(firebaseUid)
-        .collection('common_expenses')
-        .get();
-
-    for (final doc in commonSnap.docs) {
-      final expense = Expense.fromFirestore(doc);
-      final key = '${userId}_common_${expense.localId}';
-      if (!HiveService.commonExpensesBox.containsKey(key)) {
-        await HiveService.commonExpensesBox.put(
-          key,
-          Map<String, dynamic>.from(expense.toHiveMap()),
-        );
+    if (!removeMissing ||
+        snapshot.metadata.isFromCache ||
+        snapshot.metadata.hasPendingWrites) {
+      return changes;
+    }
+    final remoteIds = snapshot.docs.map((doc) => doc.id).toSet();
+    for (final key in box.keys.whereType<String>().toList()) {
+      if (!_canSync(uid)) break;
+      if (!key.startsWith(prefix) &&
+          (legacyPrefix == null || !key.startsWith(legacyPrefix))) {
+        continue;
+      }
+      final local = box.get(key);
+      final remoteId = local?['firebaseId'];
+      if (local?['syncStatus'] == 'synced' &&
+          remoteId is String &&
+          !remoteIds.contains(remoteId)) {
+        await box.delete(key);
+        changes++;
       }
     }
+    return changes;
+  }
 
-    // Pull crop history
-    final historySnap = await _db
-        .collection('users')
-        .doc(firebaseUid)
-        .collection('crop_history')
-        .get();
+  bool _sameVersion(Map? current, Map original) =>
+      current != null &&
+      current['updatedAt'] == original['updatedAt'] &&
+      current['syncStatus'] == original['syncStatus'];
 
-    for (final doc in historySnap.docs) {
-      final data = doc.data();
-      final localId = data['localId'] ?? doc.id;
-      final key = '${userId}_$localId';
-      if (!HiveService.cropHistoryBox.containsKey(key)) {
-        final hiveData = Map<String, dynamic>.from(data);
-        hiveData['id'] = localId;
-        hiveData['firebaseId'] = doc.id;
-        hiveData['syncStatus'] = 'synced';
-        // Convert Timestamps to ISO strings for Hive
-        for (final field in ['createdAt', 'updatedAt', 'plantedDate', 'harvestedDate', 'archivedAt']) {
-          if (hiveData[field] is Timestamp) {
-            hiveData[field] = (hiveData[field] as Timestamp).toDate().toIso8601String();
-          }
-        }
-        await HiveService.cropHistoryBox.put(
-          key,
-          Map<String, dynamic>.from(hiveData),
-        );
-      }
+  Future<void> _confirmUpload(
+    String uid,
+    Box<Map> box,
+    Object key,
+    Map original,
+    String documentId,
+  ) async {
+    // Record the new document ID while preserving any edit made during upload.
+    if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+    final current = box.get(key);
+    if (current == null) {
+      await box.put(key, {
+        ...original,
+        'firebaseId': documentId,
+        'syncStatus': 'deleted',
+      });
+      return;
     }
-
-    await HiveService.settingsBox
-        .put('lastSyncTime', DateTime.now().toIso8601String());
-
-    debugPrint('SyncService: Initial pull complete — '
-        '${cropsSnap.docs.length} crops, ${commonSnap.docs.length} common expenses, '
-        '${historySnap.docs.length} history entries');
+    await box.put(key, {
+      ...current,
+      'firebaseId': documentId,
+      'syncStatus': _sameVersion(current, original)
+          ? 'synced'
+          : current['syncStatus'] == 'deleted'
+          ? 'deleted'
+          : 'modified',
+    });
   }
 
   // ── Crops sync ──────────────────────────────────────────────
@@ -272,14 +272,19 @@ class SyncService {
     final userId = _getLocalUserId(firebaseUid);
     if (userId == null) return SyncResult(errors: ['No local user found']);
 
-    final cropsRef =
-        _db.collection('users').doc(firebaseUid).collection('crops');
+    final cropsRef = _db
+        .collection('users')
+        .doc(firebaseUid)
+        .collection('crops');
 
     // 1. PUSH: Upload pending/modified local crops
-    final localEntries =
-        HiveService.getItemsByUser(HiveService.cropsBox, userId);
+    final localEntries = HiveService.getItemsByUser(
+      HiveService.cropsBox,
+      userId,
+    );
 
     for (final entry in localEntries) {
+      if (!_canSync(firebaseUid)) break;
       final data = Map<String, dynamic>.from(entry.value);
       final syncStatus = data['syncStatus'] ?? 'pending';
 
@@ -290,23 +295,33 @@ class SyncService {
           if (firebaseId != null) {
             await cropsRef.doc(firebaseId).delete();
           }
-          await HiveService.cropsBox.delete(entry.key);
+          if (_sameVersion(HiveService.cropsBox.get(entry.key), data)) {
+            await HiveService.cropsBox.delete(entry.key);
+          }
           pushed++;
-        } else if (syncStatus == 'pending') {
+        } else if (syncStatus == 'pending' ||
+            (syncStatus == 'modified' && data['firebaseId'] == null)) {
           // Create in Firebase
           final crop = Crop.fromMap(data);
           final docRef = await cropsRef.add(crop.toMap());
           // Update local with firebaseId
-          data['firebaseId'] = docRef.id;
-          data['syncStatus'] = 'synced';
-          await HiveService.cropsBox
-              .put(entry.key, Map<String, dynamic>.from(data));
+          await _confirmUpload(
+            firebaseUid,
+            HiveService.cropsBox,
+            entry.key,
+            data,
+            docRef.id,
+          );
           pushed++;
         } else if (syncStatus == 'modified') {
-          final firebaseId = data['firebaseId'];
+          final firebaseId = data['firebaseId'] as String?;
           if (firebaseId != null) {
+            var documentId = firebaseId;
             // Check for conflict
-            final remoteDoc = await cropsRef.doc(firebaseId).get();
+            final remoteDoc = await cropsRef
+                .doc(firebaseId)
+                .get(const GetOptions(source: Source.server));
+            if (!_canSync(firebaseUid)) break;
             if (remoteDoc.exists) {
               final remoteData = remoteDoc.data()!;
               final localUpdated = DateTime.parse(data['updatedAt']);
@@ -324,8 +339,9 @@ class SyncService {
                 final remoteCrop = Crop.fromFirestore(remoteDoc);
                 final updated = remoteCrop.toHiveMap();
                 updated['syncStatus'] = 'synced';
-                await HiveService.cropsBox
-                    .put(entry.key, Map<String, dynamic>.from(updated));
+                if (_sameVersion(HiveService.cropsBox.get(entry.key), data)) {
+                  await HiveService.cropsBox.put(entry.key, updated);
+                }
                 conflicts++;
                 continue;
               }
@@ -333,11 +349,15 @@ class SyncService {
               // Remote deleted — re-create
               final crop = Crop.fromMap(data);
               final docRef = await cropsRef.add(crop.toMap());
-              data['firebaseId'] = docRef.id;
+              documentId = docRef.id;
             }
-            data['syncStatus'] = 'synced';
-            await HiveService.cropsBox
-                .put(entry.key, Map<String, dynamic>.from(data));
+            await _confirmUpload(
+              firebaseUid,
+              HiveService.cropsBox,
+              entry.key,
+              data,
+              documentId,
+            );
             pushed++;
           }
         }
@@ -346,53 +366,24 @@ class SyncService {
       }
     }
 
-    // 2. PULL: Download new remote crops or update stale local copies
     try {
-      final remoteSnap = await cropsRef.get();
-      for (final doc in remoteSnap.docs) {
-        final remoteData = doc.data();
-        final remoteLocalId = remoteData['localId'] ?? doc.id;
-        final localKey = '${userId}_$remoteLocalId';
-
-        if (!HiveService.cropsBox.containsKey(localKey)) {
-          // New remote item — pull it
-          final crop = Crop.fromFirestore(doc);
-          await HiveService.cropsBox.put(
-            localKey,
-            Map<String, dynamic>.from(crop.toHiveMap()),
-          );
-          pulled++;
-        } else {
-          // Existing item — update if remote is newer and local hasn't been modified
-          final localData = Map<String, dynamic>.from(
-              HiveService.cropsBox.get(localKey)!);
-          final localSyncStatus = localData['syncStatus'] ?? 'synced';
-
-          if (localSyncStatus == 'synced') {
-            final localUpdated = localData['updatedAt'] != null
-                ? DateTime.parse(localData['updatedAt'])
-                : DateTime(2000);
-            final remoteUpdated = remoteData['updatedAt'] != null
-                ? (remoteData['updatedAt'] as Timestamp).toDate()
-                : DateTime(2000);
-
-            if (remoteUpdated.isAfter(localUpdated)) {
-              final crop = Crop.fromFirestore(doc);
-              await HiveService.cropsBox.put(
-                localKey,
-                Map<String, dynamic>.from(crop.toHiveMap()),
-              );
-              pulled++;
-            }
-          }
-        }
-      }
+      pulled += await _pull(
+        firebaseUid,
+        cropsRef,
+        HiveService.cropsBox,
+        '${userId}_',
+        (doc) => Crop.fromFirestore(doc).toHiveMap(),
+      );
     } catch (e) {
       errors.add('Crop pull error: $e');
     }
 
     return SyncResult(
-        pushed: pushed, pulled: pulled, conflicts: conflicts, errors: errors);
+      pushed: pushed,
+      pulled: pulled,
+      conflicts: conflicts,
+      errors: errors,
+    );
   }
 
   // ── Expenses sync ───────────────────────────────────────────
@@ -405,25 +396,34 @@ class SyncService {
     if (userId == null) return SyncResult(errors: ['No local user found']);
 
     // Get all crop firebaseIds for mapping
-    final cropsRef =
-        _db.collection('users').doc(firebaseUid).collection('crops');
+    final cropsRef = _db
+        .collection('users')
+        .doc(firebaseUid)
+        .collection('crops');
 
-    final localCropEntries =
-        HiveService.getItemsByUser(HiveService.cropsBox, userId);
+    final localCropEntries = HiveService.getItemsByUser(
+      HiveService.cropsBox,
+      userId,
+    );
 
     for (final cropEntry in localCropEntries) {
+      if (!_canSync(firebaseUid)) break;
       final cropData = Map<String, dynamic>.from(cropEntry.value);
       final cropFirebaseId = cropData['firebaseId'] as String?;
       final cropLocalId = cropData['localId'] ?? cropData['id'];
       if (cropFirebaseId == null) continue; // Crop not synced yet
 
-      final expensesRef =
-          cropsRef.doc(cropFirebaseId).collection('expenses');
+      final expensesRef = cropsRef.doc(cropFirebaseId).collection('expenses');
       final expPrefix = '${userId}_${cropLocalId}_';
+      final legacyPrefix = '${userId}_${cropFirebaseId}_';
 
       // PUSH local expenses
       for (final entry in HiveService.expensesBox.toMap().entries) {
-        if (!entry.key.toString().startsWith(expPrefix)) continue;
+        if (!_canSync(firebaseUid)) break;
+        if (!entry.key.toString().startsWith(expPrefix) &&
+            !entry.key.toString().startsWith(legacyPrefix)) {
+          continue;
+        }
 
         final data = Map<String, dynamic>.from(entry.value);
         final syncStatus = data['syncStatus'] ?? 'pending';
@@ -432,24 +432,33 @@ class SyncService {
           if (syncStatus == 'deleted') {
             final fbId = data['firebaseId'];
             if (fbId != null) await expensesRef.doc(fbId).delete();
-            await HiveService.expensesBox.delete(entry.key);
+            if (_sameVersion(HiveService.expensesBox.get(entry.key), data)) {
+              await HiveService.expensesBox.delete(entry.key);
+            }
             pushed++;
           } else if (syncStatus == 'pending') {
             final expense = Expense.fromMap(data);
             final docRef = await expensesRef.add(expense.toMap());
-            data['firebaseId'] = docRef.id;
-            data['syncStatus'] = 'synced';
-            await HiveService.expensesBox
-                .put(entry.key, Map<String, dynamic>.from(data));
+            await _confirmUpload(
+              firebaseUid,
+              HiveService.expensesBox,
+              entry.key,
+              data,
+              docRef.id,
+            );
             pushed++;
           } else if (syncStatus == 'modified') {
             final fbId = data['firebaseId'];
             if (fbId != null) {
               final expense = Expense.fromMap(data);
               await expensesRef.doc(fbId).set(expense.toMap());
-              data['syncStatus'] = 'synced';
-              await HiveService.expensesBox
-                  .put(entry.key, Map<String, dynamic>.from(data));
+              await _confirmUpload(
+                firebaseUid,
+                HiveService.expensesBox,
+                entry.key,
+                data,
+                fbId,
+              );
               pushed++;
             }
           }
@@ -458,54 +467,26 @@ class SyncService {
         }
       }
 
-      // PULL remote expenses (new + stale updates)
       try {
-        final remoteSnap = await expensesRef.get();
-        for (final doc in remoteSnap.docs) {
-          final remoteData = doc.data();
-          final remoteLocalId = remoteData['localId'] ?? doc.id;
-          final localKey = '${userId}_${cropLocalId}_$remoteLocalId';
-
-          if (!HiveService.expensesBox.containsKey(localKey)) {
-            final expense =
-                Expense.fromFirestore(doc, cropId: cropFirebaseId);
-            await HiveService.expensesBox.put(
-              localKey,
-              Map<String, dynamic>.from(expense.toHiveMap()),
-            );
-            pulled++;
-          } else {
-            final localData = Map<String, dynamic>.from(
-                HiveService.expensesBox.get(localKey)!);
-            final localSyncStatus = localData['syncStatus'] ?? 'synced';
-
-            if (localSyncStatus == 'synced') {
-              final localUpdated = localData['updatedAt'] != null
-                  ? DateTime.parse(localData['updatedAt'])
-                  : DateTime(2000);
-              final remoteUpdated = remoteData['updatedAt'] != null
-                  ? (remoteData['updatedAt'] as Timestamp).toDate()
-                  : DateTime(2000);
-
-              if (remoteUpdated.isAfter(localUpdated)) {
-                final expense =
-                    Expense.fromFirestore(doc, cropId: cropFirebaseId);
-                await HiveService.expensesBox.put(
-                  localKey,
-                  Map<String, dynamic>.from(expense.toHiveMap()),
-                );
-                pulled++;
-              }
-            }
-          }
-        }
+        pulled += await _pull(
+          firebaseUid,
+          expensesRef,
+          HiveService.expensesBox,
+          expPrefix,
+          (doc) => Expense.fromFirestore(doc, cropId: cropLocalId).toHiveMap(),
+          legacyPrefix: legacyPrefix,
+        );
       } catch (e) {
         errors.add('Expense pull error: $e');
       }
     }
 
     return SyncResult(
-        pushed: pushed, pulled: pulled, conflicts: conflicts, errors: errors);
+      pushed: pushed,
+      pulled: pulled,
+      conflicts: conflicts,
+      errors: errors,
+    );
   }
 
   // ── Common expenses sync ────────────────────────────────────
@@ -517,12 +498,15 @@ class SyncService {
     final userId = _getLocalUserId(firebaseUid);
     if (userId == null) return SyncResult(errors: ['No local user found']);
 
-    final commonRef =
-        _db.collection('users').doc(firebaseUid).collection('common_expenses');
+    final commonRef = _db
+        .collection('users')
+        .doc(firebaseUid)
+        .collection('common_expenses');
     final prefix = '${userId}_common_';
 
     // PUSH
     for (final entry in HiveService.commonExpensesBox.toMap().entries) {
+      if (!_canSync(firebaseUid)) break;
       if (!entry.key.toString().startsWith(prefix)) continue;
 
       final data = Map<String, dynamic>.from(entry.value);
@@ -532,24 +516,36 @@ class SyncService {
         if (syncStatus == 'deleted') {
           final fbId = data['firebaseId'];
           if (fbId != null) await commonRef.doc(fbId).delete();
-          await HiveService.commonExpensesBox.delete(entry.key);
+          if (_sameVersion(
+            HiveService.commonExpensesBox.get(entry.key),
+            data,
+          )) {
+            await HiveService.commonExpensesBox.delete(entry.key);
+          }
           pushed++;
         } else if (syncStatus == 'pending') {
           final expense = Expense.fromMap(data);
           final docRef = await commonRef.add(expense.toMap());
-          data['firebaseId'] = docRef.id;
-          data['syncStatus'] = 'synced';
-          await HiveService.commonExpensesBox
-              .put(entry.key, Map<String, dynamic>.from(data));
+          await _confirmUpload(
+            firebaseUid,
+            HiveService.commonExpensesBox,
+            entry.key,
+            data,
+            docRef.id,
+          );
           pushed++;
         } else if (syncStatus == 'modified') {
           final fbId = data['firebaseId'];
           if (fbId != null) {
             final expense = Expense.fromMap(data);
             await commonRef.doc(fbId).set(expense.toMap());
-            data['syncStatus'] = 'synced';
-            await HiveService.commonExpensesBox
-                .put(entry.key, Map<String, dynamic>.from(data));
+            await _confirmUpload(
+              firebaseUid,
+              HiveService.commonExpensesBox,
+              entry.key,
+              data,
+              fbId,
+            );
             pushed++;
           }
         }
@@ -558,51 +554,24 @@ class SyncService {
       }
     }
 
-    // PULL (new + stale updates)
     try {
-      final remoteSnap = await commonRef.get();
-      for (final doc in remoteSnap.docs) {
-        final remoteData = doc.data();
-        final remoteLocalId = remoteData['localId'] ?? doc.id;
-        final localKey = '${userId}_common_$remoteLocalId';
-
-        if (!HiveService.commonExpensesBox.containsKey(localKey)) {
-          final expense = Expense.fromFirestore(doc);
-          await HiveService.commonExpensesBox.put(
-            localKey,
-            Map<String, dynamic>.from(expense.toHiveMap()),
-          );
-          pulled++;
-        } else {
-          final localData = Map<String, dynamic>.from(
-              HiveService.commonExpensesBox.get(localKey)!);
-          final localSyncStatus = localData['syncStatus'] ?? 'synced';
-
-          if (localSyncStatus == 'synced') {
-            final localUpdated = localData['updatedAt'] != null
-                ? DateTime.parse(localData['updatedAt'])
-                : DateTime(2000);
-            final remoteUpdated = remoteData['updatedAt'] != null
-                ? (remoteData['updatedAt'] as Timestamp).toDate()
-                : DateTime(2000);
-
-            if (remoteUpdated.isAfter(localUpdated)) {
-              final expense = Expense.fromFirestore(doc);
-              await HiveService.commonExpensesBox.put(
-                localKey,
-                Map<String, dynamic>.from(expense.toHiveMap()),
-              );
-              pulled++;
-            }
-          }
-        }
-      }
+      pulled += await _pull(
+        firebaseUid,
+        commonRef,
+        HiveService.commonExpensesBox,
+        prefix,
+        (doc) => Expense.fromFirestore(doc).toHiveMap(),
+      );
     } catch (e) {
       errors.add('Common expense pull error: $e');
     }
 
     return SyncResult(
-        pushed: pushed, pulled: pulled, conflicts: conflicts, errors: errors);
+      pushed: pushed,
+      pulled: pulled,
+      conflicts: conflicts,
+      errors: errors,
+    );
   }
 
   // ── Helpers ─────────────────────────────────────────────────
@@ -661,34 +630,53 @@ class SyncService {
     final userId = _getLocalUserId(firebaseUid);
     if (userId == null) return SyncResult(errors: ['No local user found']);
 
-    final historyRef =
-        _db.collection('users').doc(firebaseUid).collection('crop_history');
+    final historyRef = _db
+        .collection('users')
+        .doc(firebaseUid)
+        .collection('crop_history');
 
     // PUSH: Upload local history entries
-    final localEntries =
-        HiveService.getItemsByUser(HiveService.cropHistoryBox, userId);
+    final localEntries = HiveService.getItemsByUser(
+      HiveService.cropHistoryBox,
+      userId,
+    );
 
     for (final entry in localEntries) {
+      if (!_canSync(firebaseUid)) break;
       final data = Map<String, dynamic>.from(entry.value);
       final syncStatus = data['syncStatus'] ?? 'pending';
       final firebaseId = data['firebaseId'] as String?;
 
       try {
-        if (syncStatus == 'pending' || (syncStatus != 'synced' && firebaseId == null)) {
+        if (syncStatus == 'deleted') {
+          if (firebaseId != null) await historyRef.doc(firebaseId).delete();
+          if (_sameVersion(HiveService.cropHistoryBox.get(entry.key), data)) {
+            await HiveService.cropHistoryBox.delete(entry.key);
+          }
+          pushed++;
+        } else if (syncStatus == 'pending' ||
+            (syncStatus == 'modified' && firebaseId == null)) {
           // Create in Firebase
           final crop = Crop.fromMap(data);
           final docRef = await historyRef.add(crop.toMap());
-          data['firebaseId'] = docRef.id;
-          data['syncStatus'] = 'synced';
-          await HiveService.cropHistoryBox
-              .put(entry.key, Map<String, dynamic>.from(data));
+          await _confirmUpload(
+            firebaseUid,
+            HiveService.cropHistoryBox,
+            entry.key,
+            data,
+            docRef.id,
+          );
           pushed++;
         } else if (syncStatus == 'modified' && firebaseId != null) {
           final crop = Crop.fromMap(data);
           await historyRef.doc(firebaseId).set(crop.toMap());
-          data['syncStatus'] = 'synced';
-          await HiveService.cropHistoryBox
-              .put(entry.key, Map<String, dynamic>.from(data));
+          await _confirmUpload(
+            firebaseUid,
+            HiveService.cropHistoryBox,
+            entry.key,
+            data,
+            firebaseId,
+          );
           pushed++;
         }
       } catch (e) {
@@ -696,37 +684,24 @@ class SyncService {
       }
     }
 
-    // PULL: Download remote history entries
     try {
-      final remoteSnap = await historyRef.get();
-      for (final doc in remoteSnap.docs) {
-        final remoteData = doc.data();
-        final remoteLocalId = remoteData['localId'] ?? doc.id;
-        final localKey = '${userId}_$remoteLocalId';
-
-        if (!HiveService.cropHistoryBox.containsKey(localKey)) {
-          final hiveData = Map<String, dynamic>.from(remoteData);
-          hiveData['id'] = remoteLocalId;
-          hiveData['firebaseId'] = doc.id;
-          hiveData['syncStatus'] = 'synced';
-          // Convert Timestamps to ISO strings for Hive
-          for (final field in ['createdAt', 'updatedAt', 'plantedDate', 'harvestedDate', 'archivedAt']) {
-            if (hiveData[field] is Timestamp) {
-              hiveData[field] = (hiveData[field] as Timestamp).toDate().toIso8601String();
-            }
-          }
-          await HiveService.cropHistoryBox.put(
-            localKey,
-            Map<String, dynamic>.from(hiveData),
-          );
-          pulled++;
-        }
-      }
+      pulled += await _pull(
+        firebaseUid,
+        historyRef,
+        HiveService.cropHistoryBox,
+        '${userId}_',
+        (doc) => Crop.fromFirestore(doc).copyWith(isArchived: true).toHiveMap(),
+        removeMissing: false,
+      );
     } catch (e) {
       errors.add('History pull error: $e');
     }
 
     return SyncResult(
-        pushed: pushed, pulled: pulled, conflicts: conflicts, errors: errors);
+      pushed: pushed,
+      pulled: pulled,
+      conflicts: conflicts,
+      errors: errors,
+    );
   }
 }

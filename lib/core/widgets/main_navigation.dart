@@ -1,4 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:provider/provider.dart';
+import '../../features/auth/providers/auth_provider.dart';
+import '../services/live_farm_sync.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/crops/screens/crop_list_screen.dart';
 import '../../features/finance/screens/finance_screen.dart';
@@ -13,6 +16,20 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  final _liveSync = LiveFarmSync();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = Provider.of<AuthProvider>(context);
+    _liveSync.bind(auth.currentUserId, auth.firebaseUid);
+  }
+
+  @override
+  void dispose() {
+    _liveSync.dispose();
+    super.dispose();
+  }
 
   final List<Widget> _screens = const [
     HomeScreen(),

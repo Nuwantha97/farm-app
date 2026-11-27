@@ -25,8 +25,7 @@ class _FinanceScreenState extends State<FinanceScreen>
     if (userId != null) {
       final financeProvider = context.read<FinanceProvider>();
       financeProvider.loadCommonExpenses(userId);
-      financeProvider.fetchTotalExpenses(userId);
-      financeProvider.fetchTotalIncome(userId);
+      financeProvider.loadTotals(userId);
       financeProvider.loadIncomeEntries(userId);
     }
   }

@@ -72,12 +72,12 @@ class ExpenseListScreen extends StatelessWidget {
                       context.read<FinanceProvider>().deleteCropExpense(
                         userId,
                         expense.cropId!,
-                        expense.id,
+                        expense.localId,
                       );
                     } else {
                       context.read<FinanceProvider>().deleteCommonExpense(
                         userId,
-                        expense.id,
+                        expense.localId,
                       );
                     }
                   }

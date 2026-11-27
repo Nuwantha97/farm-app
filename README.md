@@ -35,7 +35,7 @@ A comprehensive **offline-first** farm management application built with Flutter
 - Crop conflicts use `updatedAt` to choose the newer version
 - Sync status tracking per record (`pending`, `synced`, `modified`, `deleted`)
 - Manual "Sync Now" with detailed push/pull/conflict reporting
-- Initial download when syncing an account with no local crop records
+- Live cloud updates while sync is enabled and the account is signed in to Firebase
 
 ### 🔒 Security
 - Hive boxes use **AES-256** encryption, with the key managed by `flutter_secure_storage`
@@ -98,13 +98,13 @@ Sale amounts and estimated consumption values live on crop documents. Archived c
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.
-2. Automatic sync is off by default. When enabled, screen loads, local changes, and pull-to-refresh can trigger it. **Settings → Sync Now** requests a manual run. When the account has no local crop records, that flow first downloads existing cloud records for the linked account.
+2. With sync off, Hive changes still update the tabs and their totals. When sync is on and the account is signed in to Firebase, Firestore listeners watch crops, their expenses, common expenses, and crop history. A server change triggers a sync that merges the result into Hive. Local changes, pull-to-refresh, and **Settings → Sync Now** can also start a sync.
 3. With connectivity and a linked account, the service processes crops, crop expenses, common expenses, and crop history in that order. It uploads local changes and pulls remote records into Hive. A successful upload marks the local record `synced`. Once a queued delete succeeds in Firestore, the service removes the local record.
 4. For conflicting crop edits, sync compares `updatedAt` and keeps the newer crop, with the local edit winning a tie. For crop and expense pulls, a newer remote row can update a local copy already marked `synced`. Sync errors appear in Settings. [Sync service](lib/core/services/sync_service.dart) · [Settings provider](lib/features/settings/providers/settings_provider.dart)
 
 ### Firestore access and current limits
 
-- The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. The crop-create rule requires `type`, but the current crop serializer omits that field. Deploying those rules as written can cause new crop uploads to fail with `permission-denied`. [Firestore rules](firestore.rules) · [Crop serializer](lib/models/crop_model.dart)
+- The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. Crop uploads include the crop name in the `type` field required by the existing create rule. [Firestore rules](firestore.rules) · [Crop serializer](lib/models/crop_model.dart)
 - The account deletion flow attempts to remove the Firebase Authentication account and clears local Hive data. The separate Firestore cleanup method is unconnected to that flow, so cloud farm documents can remain. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore cleanup method](lib/core/services/sync_service.dart)
 
 ### Project Structure

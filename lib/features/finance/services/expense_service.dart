@@ -10,11 +10,48 @@ import '../../../models/expense_model.dart';
 /// Hive-based expense CRUD service.
 /// All data is stored locally in an encrypted Hive box.
 class ExpenseService {
+  /// Keep summaries current after local edits, archiving, or a cloud pull.
+  Stream<({double expenses, double income})> watchTotals(
+    String userId, {
+    bool allTime = false,
+  }) => _watchBoxes([
+    HiveService.cropsBox,
+    HiveService.cropHistoryBox,
+    HiveService.expensesBox,
+    HiveService.commonExpensesBox,
+    if (allTime) HiveService.expenseHistoryBox,
+  ]).asyncMap((_) async => (
+    expenses: await (allTime ? getAllTimeTotalExpenses(userId) : getTotalExpenses(userId)),
+    income: await (allTime ? getAllTimeTotalIncome(userId) : getTotalIncome(userId)),
+  ));
+
+  Stream<void> _watchBoxes(List<Box<Map>> boxes) {
+    final subscriptions = <StreamSubscription<BoxEvent>>[];
+    final changes = StreamController<void>();
+    changes.onListen = () {
+      for (final box in boxes) {
+        subscriptions.add(box.watch().listen((_) => changes.add(null)));
+      }
+      changes.add(null);
+    };
+    changes.onCancel = () async {
+      await Future.wait(subscriptions.map((subscription) => subscription.cancel()));
+    };
+    return changes.stream;
+  }
+
+  bool _isArchived(String key, Map data) =>
+      data['isArchived'] == true || data['archivedAt'] != null ||
+      HiveService.cropHistoryBox.containsKey(key);
+
   static const _uuid = Uuid();
 
   /// Hive key for crop expenses: {userId}_{cropId}_{expenseId}
   String _cropExpenseKey(String userId, String cropId, String expenseId) =>
       '${userId}_${cropId}_$expenseId';
+
+  String? _legacyExpenseCropId(String userId, String cropId) =>
+      HiveService.cropsBox.get('${userId}_$cropId')?['firebaseId'] as String?;
 
   /// Hive key for common expenses: {userId}_common_{expenseId}
   String _commonExpenseKey(String userId, String expenseId) =>
@@ -85,14 +122,16 @@ class ExpenseService {
   List<Expense> _getCropExpensesList(String userId, String cropId,
       {String? cropName}) {
     final prefix = '${userId}_${cropId}_';
+    final legacyCropId = _legacyExpenseCropId(userId, cropId);
     final expenses = HiveService.expensesBox
         .toMap()
         .entries
-        .where((e) => e.key.toString().startsWith(prefix))
+        .where((e) => e.key.toString().startsWith(prefix) ||
+            (legacyCropId != null && e.key.toString().startsWith('${userId}_${legacyCropId}_')))
         .map((e) {
       final data = Map<String, dynamic>.from(e.value);
       if (cropName != null) data['cropName'] = cropName;
-      if (data['cropId'] == null) data['cropId'] = cropId;
+      data['cropId'] = cropId;
       return Expense.fromMap(data);
     })
         .where((e) => e.syncStatus != 'deleted')
@@ -138,7 +177,11 @@ class ExpenseService {
   /// Delete a crop expense.
   Future<void> deleteCropExpense(
       String userId, String cropId, String expenseId) async {
-    final key = _cropExpenseKey(userId, cropId, expenseId);
+    var key = _cropExpenseKey(userId, cropId, expenseId);
+    final legacyCropId = _legacyExpenseCropId(userId, cropId);
+    if (legacyCropId != null && !HiveService.expensesBox.containsKey(key)) {
+      key = _cropExpenseKey(userId, legacyCropId, expenseId);
+    }
     final existing = HiveService.expensesBox.get(key);
 
     if (existing != null) {
@@ -180,7 +223,7 @@ class ExpenseService {
       final data = Map<String, dynamic>.from(entry.value);
       final status = data['status'] ?? '';
       if (data['syncStatus'] == 'deleted') continue;
-      if (data['isArchived'] == true) continue;
+      if (_isArchived(entry.key, data)) continue;
 
       if (status == 'sold') {
         total += (data['soldAmount'] ?? 0.0).toDouble();
@@ -192,27 +235,14 @@ class ExpenseService {
   }
 
   /// Get income entries (sold/consumed crops) as a stream — active only.
-  Stream<List<Map<String, dynamic>>> getIncomeEntries(String userId) {
-    final controller = StreamController<List<Map<String, dynamic>>>();
-    controller.add(_getIncomeEntriesList(userId));
-
-    void listener() {
-      if (!controller.isClosed) {
-        controller.add(_getIncomeEntriesList(userId));
-      }
-    }
-
-    HiveService.cropsBox.listenable().addListener(listener);
-    controller.onCancel = () {
-      HiveService.cropsBox.listenable().removeListener(listener);
-    };
-
-    return controller.stream;
-  }
+  Stream<List<Map<String, dynamic>>> getIncomeEntries(String userId) =>
+      _watchBoxes([HiveService.cropsBox, HiveService.cropHistoryBox])
+          .map((_) => _getIncomeEntriesList(userId));
 
   List<Map<String, dynamic>> _getIncomeEntriesList(String userId) {
     final entries = HiveService.getItemsByUser(HiveService.cropsBox, userId);
     return entries
+        .where((entry) => !_isArchived(entry.key, entry.value))
         .map((e) => Map<String, dynamic>.from(e.value))
         .where((data) {
       final status = data['status'] ?? '';
@@ -258,9 +288,11 @@ class ExpenseService {
     for (final entry in cropEntries) {
       final data = Map<String, dynamic>.from(entry.value);
       if (data['syncStatus'] == 'deleted') continue;
-      if (data['isArchived'] == true) continue;
-      final cropId = data['id'] ?? data['localId'] ?? '';
-      if (cropId.isNotEmpty) activeCropIds.add(cropId);
+      if (_isArchived(entry.key, data)) continue;
+      activeCropIds.add(entry.key.substring(userId.length + 1));
+      // The first cloud download can use the Firestore crop ID in expense keys.
+      final firebaseId = data['firebaseId'];
+      if (firebaseId is String) activeCropIds.add(firebaseId);
     }
 
     // Crop expenses — only for active crops
@@ -304,6 +336,7 @@ class ExpenseService {
     final userPrefix = '${userId}_';
     for (final entry in HiveService.expensesBox.toMap().entries) {
       if (!entry.key.toString().startsWith(userPrefix)) continue;
+      if (HiveService.expenseHistoryBox.containsKey(entry.key)) continue;
       final data = Map<String, dynamic>.from(entry.value);
       if (data['syncStatus'] == 'deleted') continue;
       total += (data['amount'] ?? 0.0).toDouble();
@@ -328,6 +361,7 @@ class ExpenseService {
     final activeEntries =
         HiveService.getItemsByUser(HiveService.cropsBox, userId);
     for (final entry in activeEntries) {
+      if (HiveService.cropHistoryBox.containsKey(entry.key)) continue;
       final data = Map<String, dynamic>.from(entry.value);
       final status = data['status'] ?? '';
       if (data['syncStatus'] == 'deleted') continue;
