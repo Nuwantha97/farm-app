@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/Nuwantha97/farm-app/compare/farm_app-v1.2.0...farm_app-v1.3.0) (2026-11-27)
+
+
+### Features
+
+* add the history tab to show all time crop history ([4046d4e](https://github.com/Nuwantha97/farm-app/commit/4046d4ed1feb126b5016e607b8d8489eb27ae606))
+* enhance crop archiving functionality and update UI feedback ([0c2e4ff](https://github.com/Nuwantha97/farm-app/commit/0c2e4ff484e59dd861437584975becd9e026e266))
+
+
+### Documentation
+
+* update README to clarify income tracking and sync features ([cc30f74](https://github.com/Nuwantha97/farm-app/commit/cc30f74d6e627cd398bc7e2a6e8d8f27ff4dbe79))
+
 ## [1.2.0](https://github.com/Nuwantha97/farm-app/compare/farm_app-v1.1.0...farm_app-v1.2.0) (2026-06-01)
 
 
