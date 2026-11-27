@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/services/hive_service.dart';
 import '../../../models/crop_model.dart';
+import '../../finance/services/expense_service.dart';
 
 /// Hive-based crop CRUD service.
 /// All data is stored locally in an encrypted Hive box.
@@ -124,18 +125,7 @@ class CropService {
     final now = DateTime.now().toIso8601String();
     final archivedAt = history?['archivedAt'] ?? existing['archivedAt'] ?? now;
 
-    // Save expenses before publishing the archive snapshot.
-    final expPrefix = '${userId}_${cropId}_';
-    for (final entry in HiveService.expensesBox.toMap().entries) {
-      if (!entry.key.toString().startsWith(expPrefix)) continue;
-      final expData = Map<String, dynamic>.from(entry.value);
-      if (expData['syncStatus'] == 'deleted') continue;
-      // Store in expense history with the same key
-      await HiveService.expenseHistoryBox.put(
-        entry.key.toString(),
-        Map<String, dynamic>.from(expData),
-      );
-    }
+    await ExpenseService.snapshotCropExpenses(userId, cropId, existing, archivedAt);
 
     final current = HiveService.cropsBox.get(key);
     if (current == null || current['syncStatus'] == 'deleted') return false;

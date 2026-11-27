@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../../features/finance/services/expense_service.dart';
 import '../../models/crop_model.dart';
 import '../../models/expense_model.dart';
 import 'hive_service.dart';
@@ -128,6 +129,7 @@ class SyncService {
       for (final sync in [
         _syncCrops,
         _syncExpenses,
+        _syncCommonExpenseHistory,
         _syncCommonExpenses,
         _syncCropHistory,
       ]) {
@@ -508,6 +510,7 @@ class SyncService {
     for (final entry in HiveService.commonExpensesBox.toMap().entries) {
       if (!_canSync(firebaseUid)) break;
       if (!entry.key.toString().startsWith(prefix)) continue;
+      if (HiveService.commonExpenseHistoryBox.containsKey(entry.key)) continue;
 
       final data = Map<String, dynamic>.from(entry.value);
       final syncStatus = data['syncStatus'] ?? 'pending';
@@ -525,7 +528,8 @@ class SyncService {
           pushed++;
         } else if (syncStatus == 'pending') {
           final expense = Expense.fromMap(data);
-          final docRef = await commonRef.add(expense.toMap());
+          final docRef = commonRef.doc(expense.localId);
+          await docRef.set(expense.toMap());
           await _confirmUpload(
             firebaseUid,
             HiveService.commonExpensesBox,
@@ -574,6 +578,90 @@ class SyncService {
     );
   }
 
+  Future<SyncResult> _syncCommonExpenseHistory(String uid) async {
+    final userId = _getLocalUserId(uid);
+    if (userId == null) return SyncResult(errors: ['No local user found']);
+    final account = _db.collection('users').doc(uid);
+    final currentRef = account.collection('common_expenses');
+    final archiveRef = account
+        .collection('history')
+        .doc('archive')
+        .collection('common_expenses_history');
+    final history = HiveService.commonExpenseHistoryBox;
+    final current = HiveService.commonExpensesBox;
+    var pushed = 0;
+    var pulled = 0;
+    final errors = <String>[];
+
+    try {
+      pulled = await _pull(
+        uid,
+        archiveRef,
+        history,
+        '${userId}_common_',
+        _decodeExpenseHistory,
+        removeMissing: false,
+      );
+    } catch (error) {
+      errors.add('Common expense history pull error: $error');
+    }
+
+    for (final entry in HiveService.getItemsByUser(history, userId)) {
+      if (!_canSync(uid)) break;
+      final data = entry.value;
+      if (data['syncStatus'] == 'synced' && !current.containsKey(entry.key)) {
+        continue;
+      }
+      try {
+        final expense = Expense.fromMap(Map<String, dynamic>.from(data));
+        final activeId = current.get(entry.key)?['firebaseId'] as String?;
+        final originalId =
+            activeId ??
+            data['originalFirebaseId'] as String? ??
+            expense.firebaseId;
+        if (data['syncStatus'] != 'synced') {
+          final batch = _db.batch();
+          batch.set(archiveRef.doc(expense.localId), {
+            ..._encodeExpenseHistory(data, expense),
+            'originalFirebaseId': originalId,
+          });
+          batch.delete(currentRef.doc(originalId ?? expense.localId));
+          await batch.commit();
+          if (!_canSync(uid)) break;
+          await history.put(entry.key, {
+            ...data,
+            'syncStatus': 'synced',
+            'originalFirebaseId': originalId,
+          });
+          pushed++;
+        }
+        if (_canSync(uid)) await current.delete(entry.key);
+      } catch (error) {
+        errors.add('Common expense archive error: $error');
+      }
+    }
+    return SyncResult(pushed: pushed, pulled: pulled, errors: errors);
+  }
+
+  Map<String, dynamic> _encodeExpenseHistory(Map data, Expense expense) => {
+    ...expense.toMap(),
+    'archivedAt': Timestamp.fromDate(
+      DateTime.tryParse(data['archivedAt']?.toString() ?? '') ??
+          expense.updatedAt,
+    ),
+  };
+
+  Map<String, dynamic> _decodeExpenseHistory(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) => {
+    ...Expense.fromFirestore(doc).toHiveMap(),
+    'archivedAt': (doc.data()['archivedAt'] as Timestamp?)
+        ?.toDate()
+        .toIso8601String(),
+    'originalFirebaseId': doc.data()['originalFirebaseId'],
+    'historySynced': true,
+  };
+
   // ── Helpers ─────────────────────────────────────────────────
 
   /// Get local userId from firebaseUid by scanning the users box.
@@ -615,6 +703,24 @@ class SyncService {
       await doc.reference.delete();
     }
 
+    final archive = userRef.collection('history').doc('archive');
+    final archivedCrops = await archive.collection('crops_history').get();
+    for (final crop in archivedCrops.docs) {
+      final expenses = await crop.reference
+          .collection('expenses_history')
+          .get();
+      for (final expense in expenses.docs) {
+        await expense.reference.delete();
+      }
+      await crop.reference.delete();
+    }
+    final archivedCommon = await archive
+        .collection('common_expenses_history')
+        .get();
+    for (final expense in archivedCommon.docs) {
+      await expense.reference.delete();
+    }
+
     // Delete user doc
     await userRef.delete();
 
@@ -630,71 +736,157 @@ class SyncService {
     final userId = _getLocalUserId(firebaseUid);
     if (userId == null) return SyncResult(errors: ['No local user found']);
 
-    final historyRef = _db
-        .collection('users')
-        .doc(firebaseUid)
-        .collection('crop_history');
+    final account = _db.collection('users').doc(firebaseUid);
+    final legacyRef = account.collection('crop_history');
+    final historyRef = account
+        .collection('history')
+        .doc('archive')
+        .collection('crops_history');
+    final crops = HiveService.cropHistoryBox;
+    final expenses = HiveService.expenseHistoryBox;
+    final userPrefix = '${userId}_';
 
-    // PUSH: Upload local history entries
-    final localEntries = HiveService.getItemsByUser(
-      HiveService.cropHistoryBox,
-      userId,
-    );
-
-    for (final entry in localEntries) {
-      if (!_canSync(firebaseUid)) break;
-      final data = Map<String, dynamic>.from(entry.value);
-      final syncStatus = data['syncStatus'] ?? 'pending';
-      final firebaseId = data['firebaseId'] as String?;
-
+    for (final collection in [legacyRef, historyRef]) {
       try {
-        if (syncStatus == 'deleted') {
-          if (firebaseId != null) await historyRef.doc(firebaseId).delete();
-          if (_sameVersion(HiveService.cropHistoryBox.get(entry.key), data)) {
-            await HiveService.cropHistoryBox.delete(entry.key);
-          }
-          pushed++;
-        } else if (syncStatus == 'pending' ||
-            (syncStatus == 'modified' && firebaseId == null)) {
-          // Create in Firebase
-          final crop = Crop.fromMap(data);
-          final docRef = await historyRef.add(crop.toMap());
-          await _confirmUpload(
-            firebaseUid,
-            HiveService.cropHistoryBox,
-            entry.key,
-            data,
-            docRef.id,
-          );
-          pushed++;
-        } else if (syncStatus == 'modified' && firebaseId != null) {
-          final crop = Crop.fromMap(data);
-          await historyRef.doc(firebaseId).set(crop.toMap());
-          await _confirmUpload(
-            firebaseUid,
-            HiveService.cropHistoryBox,
-            entry.key,
-            data,
-            firebaseId,
-          );
-          pushed++;
-        }
-      } catch (e) {
-        errors.add('History sync error: $e');
+        pulled += await _pull(
+          firebaseUid,
+          collection,
+          crops,
+          userPrefix,
+          (doc) => {
+            ...Crop.fromFirestore(doc).copyWith(isArchived: true).toHiveMap(),
+            'historySynced': collection == historyRef,
+          },
+          removeMissing: false,
+        );
+      } catch (error) {
+        errors.add('Crop history pull error: $error');
       }
     }
 
-    try {
-      pulled += await _pull(
-        firebaseUid,
-        historyRef,
-        HiveService.cropHistoryBox,
-        '${userId}_',
-        (doc) => Crop.fromFirestore(doc).copyWith(isArchived: true).toHiveMap(),
-        removeMissing: false,
-      );
-    } catch (e) {
-      errors.add('History pull error: $e');
+    // Older clients could archive the current crop before uploading its history.
+    for (final entry in HiveService.getItemsByUser(
+      HiveService.cropsBox,
+      userId,
+    )) {
+      if (!_canSync(firebaseUid)) break;
+      final data = entry.value;
+      if (data['syncStatus'] == 'deleted' ||
+          (data['isArchived'] != true && data['archivedAt'] == null) ||
+          crops.containsKey(entry.key)) {
+        continue;
+      }
+      await crops.put(entry.key, {
+        ...data,
+        'firebaseId': null,
+        'syncStatus': 'pending',
+      });
+    }
+
+    for (final entry in HiveService.getItemsByUser(crops, userId)) {
+      if (!_canSync(firebaseUid)) break;
+      final data = Map<String, dynamic>.from(entry.value);
+      final cropId = entry.key.substring(userPrefix.length);
+      final document = historyRef.doc(cropId);
+      final expenseRef = document.collection('expenses_history');
+      final current = HiveService.cropsBox.get(entry.key);
+      final cropPrefix = '${userId}_${cropId}_';
+      final originalCropId = current?['firebaseId'];
+      final legacyPrefix = originalCropId is String
+          ? '${userId}_${originalCropId}_'
+          : cropPrefix;
+
+      try {
+        if (data['syncStatus'] == 'deleted') continue;
+        if (data['historySynced'] != true) {
+          final crop = Crop.fromMap({...data, 'localId': cropId});
+          await document.set(crop.copyWith(isArchived: true).toMap());
+          if (!_canSync(firebaseUid)) break;
+          final latest = crops.get(entry.key);
+          if (_sameVersion(latest, data)) {
+            await crops.put(entry.key, {
+              ...latest!,
+              'syncStatus': 'synced',
+              'historySynced': true,
+            });
+          }
+          pushed++;
+        }
+
+        pulled += await _pull(
+          firebaseUid,
+          expenseRef,
+          expenses,
+          cropPrefix,
+          (doc) => {
+            ..._decodeExpenseHistory(doc),
+            'cropId': cropId,
+            'cropName': data['name'],
+          },
+          legacyPrefix: legacyPrefix,
+          removeMissing: false,
+        );
+        if (!_canSync(firebaseUid)) break;
+        await ExpenseService.snapshotCropExpenses(
+          userId,
+          cropId,
+          {...?current, 'name': data['name']},
+          (data['archivedAt'] ??
+                  data['updatedAt'] ??
+                  DateTime.now().toIso8601String())
+              .toString(),
+        );
+
+        final pending = <String, MapEntry<String, Map>>{};
+        for (final expenseEntry in HiveService.getItemsByUser(
+          expenses,
+          userId,
+        )) {
+          final key = expenseEntry.key;
+          if (!key.startsWith(cropPrefix) && !key.startsWith(legacyPrefix)) {
+            continue;
+          }
+          final snapshot = expenseEntry.value;
+          if (snapshot['syncStatus'] == 'deleted') continue;
+          final prefix = key.startsWith(cropPrefix) ? cropPrefix : legacyPrefix;
+          final id =
+              (snapshot['localId'] ??
+                      snapshot['id'] ??
+                      key.substring(prefix.length))
+                  .toString();
+          if (!pending.containsKey(id) || key.startsWith(cropPrefix)) {
+            pending[id] = expenseEntry;
+          }
+        }
+        for (final item in pending.entries) {
+          if (!_canSync(firebaseUid)) break;
+          final snapshot = item.value.value;
+          if (snapshot['historySynced'] == true) continue;
+          final expense = Expense.fromMap({
+            ...snapshot,
+            'localId': item.key,
+            'cropId': cropId,
+            'cropName': data['name'],
+          });
+          await expenseRef
+              .doc(item.key)
+              .set(
+                _encodeExpenseHistory({
+                  ...snapshot,
+                  'archivedAt': snapshot['archivedAt'] ?? data['archivedAt'],
+                }, expense),
+              );
+          if (_canSync(firebaseUid) && expenses.containsKey(item.value.key)) {
+            await expenses.put(item.value.key, {
+              ...snapshot,
+              'historySynced': true,
+            });
+          }
+          pushed++;
+        }
+      } catch (error) {
+        errors.add('Crop history sync error: $error');
+      }
     }
 
     return SyncResult(

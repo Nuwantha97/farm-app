@@ -61,6 +61,20 @@ service cloud.firestore {
         allow update: if isAuthenticated() && isOwner(userId);
         allow delete: if isAuthenticated() && isOwner(userId);
       }
+
+      match /history/archive {
+        match /crops_history/{cropId} {
+          allow read, write: if isAuthenticated() && isOwner(userId);
+
+          match /expenses_history/{expenseId} {
+            allow read, write: if isAuthenticated() && isOwner(userId);
+          }
+        }
+
+        match /common_expenses_history/{expenseId} {
+          allow read, write: if isAuthenticated() && isOwner(userId);
+        }
+      }
       
       // ===== Sales =====
       match /sales/{saleId} {

@@ -17,6 +17,7 @@ class HiveService {
   static const String commonExpensesBoxName = 'common_expenses';
   static const String cropHistoryBoxName = 'crop_history';
   static const String expenseHistoryBoxName = 'expense_history';
+  static const String commonExpenseHistoryBoxName = 'common_expense_history';
   static const String settingsBoxName = 'settings';
 
   static late Box<Map> _usersBox;
@@ -25,6 +26,7 @@ class HiveService {
   static late Box<Map> _commonExpensesBox;
   static late Box<Map> _cropHistoryBox;
   static late Box<Map> _expenseHistoryBox;
+  static late Box<Map> _commonExpenseHistoryBox;
   static late Box _settingsBox;
 
   /// Initialize Hive and open all encrypted boxes.
@@ -45,6 +47,10 @@ class HiveService {
         await Hive.openBox<Map>(cropHistoryBoxName, encryptionCipher: cipher);
     _expenseHistoryBox =
         await Hive.openBox<Map>(expenseHistoryBoxName, encryptionCipher: cipher);
+    _commonExpenseHistoryBox = await Hive.openBox<Map>(
+      commonExpenseHistoryBoxName,
+      encryptionCipher: cipher,
+    );
     _settingsBox =
         await Hive.openBox(settingsBoxName, encryptionCipher: cipher);
   }
@@ -77,6 +83,7 @@ class HiveService {
   static Box<Map> get commonExpensesBox => _commonExpensesBox;
   static Box<Map> get cropHistoryBox => _cropHistoryBox;
   static Box<Map> get expenseHistoryBox => _expenseHistoryBox;
+  static Box<Map> get commonExpenseHistoryBox => _commonExpenseHistoryBox;
   static Box get settingsBox => _settingsBox;
 
   // ── Data operations ────────────────────────────────────────────
@@ -89,6 +96,7 @@ class HiveService {
     await _commonExpensesBox.clear();
     await _cropHistoryBox.clear();
     await _expenseHistoryBox.clear();
+    await _commonExpenseHistoryBox.clear();
     debugPrint('HiveService: Cleared all user data boxes');
   }
 
@@ -100,6 +108,7 @@ class HiveService {
     await _commonExpensesBox.clear();
     await _cropHistoryBox.clear();
     await _expenseHistoryBox.clear();
+    await _commonExpenseHistoryBox.clear();
     await _settingsBox.clear();
     debugPrint('HiveService: Cleared ALL data including user credentials');
   }

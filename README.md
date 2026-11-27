@@ -35,7 +35,7 @@ A comprehensive **offline-first** farm management application built with Flutter
 - Crop conflicts use `updatedAt` to choose the newer version
 - Sync status tracking per record (`pending`, `synced`, `modified`, `deleted`)
 - Manual "Sync Now" with detailed push/pull/conflict reporting
-- Live cloud updates while sync is enabled and the account is signed in to Firebase
+- Initial download when syncing an account with no local crop records
 
 ### 🔒 Security
 - Hive boxes use **AES-256** encryption, with the key managed by `flutter_secure_storage`
@@ -72,12 +72,15 @@ On native platforms, Hive stores its box files in the app's documents directory.
 | `expenses` | `{localUserId}_{cropId}_{expenseId}` | Crop expense title, amount, date, and sync metadata |
 | `common_expenses` | `{localUserId}_common_{expenseId}` | Farm-wide expenses |
 | `crop_history` | `{localUserId}_{cropId}` | Archived crop snapshots |
-| `expense_history` | Same key as the original `expenses` entry | Local copies of a crop's expenses at the time of archiving |
+| `expense_history` | `{localUserId}_{cropId}_{expenseId}` | Copies of a crop's expenses at the time of archiving |
+| `common_expense_history` | `{localUserId}_common_{expenseId}` | Archived farm-wide expenses |
 | `settings` | Setting name | Sync preference, last sync time, and the email used to restore the local session |
 
 The app creates a local account ID on each device and links it to the same Firebase Auth UID. Crops and expenses have a stable `localId` that the sync service sends to Firestore and uses to match records across devices. `firebaseId` records the corresponding Firestore document ID in Hive after upload or download. The crop ID in a Hive key normally uses the local crop ID. The initial download can key nested expenses by the Firestore crop document ID. [Local user model](lib/models/user_model.dart) · [Sync service](lib/core/services/sync_service.dart)
 
 When a user removes a sold or consumed crop from **My Crops**, the app copies its expenses and crop snapshot into the history boxes and flags the original crop as archived. Both lists observe the crop and history boxes. A history snapshot hides the crop from My Crops even if a stale row still exists in `crops`. History shows one entry per crop key. [Crop service](lib/features/crops/services/crop_service.dart)
+
+To archive a farm-wide expense, long-press it in **Finance → Common Expenses** and select **Move to History**. **History → Expenses** lists archived common expenses and crop expenses grouped by crop. The **All-Time Summary** combines current and archived expenses, counting each expense once.
 
 ### Authentication and Firestore storage
 
@@ -90,21 +93,25 @@ users/{firebaseUid}
 ├── crops/{cropDocumentId}
 │   └── expenses/{expenseDocumentId}
 ├── common_expenses/{expenseDocumentId}
-└── crop_history/{historyDocumentId}
+├── crop_history/{legacyHistoryId}
+└── history/archive
+    ├── crops_history/{cropId}
+    │   └── expenses_history/{expenseId}
+    └── common_expenses_history/{expenseId}
 ```
 
-Sale amounts and estimated consumption values live on crop documents. Archived crop snapshots sync to `crop_history`. The expense snapshots stay in the local `expense_history` box, and the original expense records sync under their parent crop document. [Crop model](lib/models/crop_model.dart) · [Crop service](lib/features/crops/services/crop_service.dart) · [Sync service](lib/core/services/sync_service.dart)
+Sale amounts and estimated consumption values live on crop documents. Crop and expense snapshots sync under `history/archive`. The app still reads the legacy `crop_history` collection and copies those snapshots into the new structure during sync. Original crop expenses remain linked to their source crop and are excluded from current lists once it is archived. For common expenses, Firestore writes the archive copy and deletes the current document in one batch. [Sync service](lib/core/services/sync_service.dart)
 
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.
-2. With sync off, Hive changes still update the tabs and their totals. When sync is on and the account is signed in to Firebase, Firestore listeners watch crops, their expenses, common expenses, and crop history. A server change triggers a sync that merges the result into Hive. Local changes, pull-to-refresh, and **Settings → Sync Now** can also start a sync.
-3. With connectivity and a linked account, the service processes crops, crop expenses, common expenses, and crop history in that order. It uploads local changes and pulls remote records into Hive. A successful upload marks the local record `synced`. Once a queued delete succeeds in Firestore, the service removes the local record.
+2. With sync off, Hive updates the tabs and totals as soon as a change is saved. With sync on and a linked Firebase session, Firestore listeners watch current and archived records. Local changes, pull-to-refresh, and **Settings → Sync Now** can also start a sync.
+3. With connectivity and a linked account, the service processes crops and their expenses, common expense archives and current common expenses, then crop archives and their expense snapshots. It uploads local changes and pulls remote records into Hive. Once a queued delete succeeds in Firestore, the service removes the local record.
 4. For conflicting crop edits, sync compares `updatedAt` and keeps the newer crop, with the local edit winning a tie. For crop and expense pulls, a newer remote row can update a local copy already marked `synced`. Sync errors appear in Settings. [Sync service](lib/core/services/sync_service.dart) · [Settings provider](lib/features/settings/providers/settings_provider.dart)
 
 ### Firestore access and current limits
 
-- The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. Crop uploads include the crop name in the `type` field required by the existing create rule. [Firestore rules](firestore.rules) · [Crop serializer](lib/models/crop_model.dart)
+- The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. Publish the updated `firestore.rules` before using cloud expense history. From the project root, run `firebase deploy --only firestore:rules --project farm-project-8f792`. The app writes the history documents when it syncs. [Firestore rules](firestore.rules)
 - The account deletion flow attempts to remove the Firebase Authentication account and clears local Hive data. The separate Firestore cleanup method is unconnected to that flow, so cloud farm documents can remain. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore cleanup method](lib/core/services/sync_service.dart)
 
 ### Project Structure

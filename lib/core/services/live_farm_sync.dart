@@ -46,28 +46,53 @@ class LiveFarmSync {
     if (_collections.isNotEmpty) return;
 
     final account = FirebaseFirestore.instance.collection('users').doc(uid);
-    final crops = account.collection('crops');
+    final archive = account.collection('history').doc('archive');
+    _watchCropExpenses(account.collection('crops'), 'expenses', localId);
+    _watchCropExpenses(
+      archive.collection('crops_history'),
+      'expenses_history',
+      localId,
+    );
+    _collections.add(_watch(account.collection('common_expenses'), localId));
+    _collections.add(_watch(account.collection('crop_history'), localId));
+    _collections.add(
+      _watch(archive.collection('common_expenses_history'), localId),
+    );
+  }
+
+  void _watchCropExpenses(
+    CollectionReference<Map<String, dynamic>> crops,
+    String expenseCollection,
+    String localId,
+  ) {
     _collections.add(
       _watch(
         crops,
         localId,
         onServerSnapshot: (snapshot) {
-          final ids = snapshot.docs.map((doc) => doc.id).toSet();
+          final paths = snapshot.docs
+              .map((doc) => doc.reference.collection(expenseCollection).path)
+              .toSet();
           for (final id
-              in _expenses.keys.where((id) => !ids.contains(id)).toList()) {
+              in _expenses.keys
+                  .where(
+                    (path) =>
+                        path.startsWith('${crops.path}/') &&
+                        !paths.contains(path),
+                  )
+                  .toList()) {
             unawaited(_expenses.remove(id)?.cancel());
           }
-          for (final id in ids) {
+          for (final doc in snapshot.docs) {
+            final expenses = doc.reference.collection(expenseCollection);
             _expenses.putIfAbsent(
-              id,
-              () => _watch(crops.doc(id).collection('expenses'), localId),
+              expenses.path,
+              () => _watch(expenses, localId),
             );
           }
         },
       ),
     );
-    _collections.add(_watch(account.collection('common_expenses'), localId));
-    _collections.add(_watch(account.collection('crop_history'), localId));
   }
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>> _watch(

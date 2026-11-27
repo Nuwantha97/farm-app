@@ -24,11 +24,9 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
     super.initState();
     final userId = context.read<AuthProvider>().currentUserId;
     if (userId != null) {
-      final crop = context.read<CropProvider>().cropById(widget.cropId);
       context.read<FinanceProvider>().loadCropExpenses(
         userId,
         widget.cropId,
-        cropName: crop?.name,
       );
     }
   }

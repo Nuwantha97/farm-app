@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/crop_model.dart';
+import '../../../models/expense_model.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/history_provider.dart';
 
@@ -20,7 +21,7 @@ class _HistoryScreenState extends State<HistoryScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = context.read<AuthProvider>().currentUserId;
@@ -55,8 +56,9 @@ class _HistoryScreenState extends State<HistoryScreen>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
           tabs: const [
-            Tab(text: 'All-Time Summary'),
+            Tab(text: 'Summary'),
             Tab(text: 'Archived Crops'),
+            Tab(text: 'Expenses'),
           ],
         ),
       ),
@@ -65,10 +67,49 @@ class _HistoryScreenState extends State<HistoryScreen>
         children: [
           _buildOverviewTab(),
           _buildArchivedCropsTab(),
+          _buildArchivedExpensesTab(),
         ],
       ),
     );
   }
+
+  Widget _buildArchivedExpensesTab() {
+    return Consumer<HistoryProvider>(builder: (context, history, _) {
+      final byCrop = <String, List<Expense>>{};
+      for (final expense in history.archivedCropExpenses) {
+        byCrop.putIfAbsent(expense.cropId!, () => []).add(expense);
+      }
+      return RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text('Common Expenses', style: Theme.of(context).textTheme.titleLarge),
+            if (history.archivedCommonExpenses.isEmpty)
+              const ListTile(title: Text('No archived common expenses')),
+            ...history.archivedCommonExpenses.map(_archivedExpenseTile),
+            const SizedBox(height: 16),
+            Text('Crop Expenses', style: Theme.of(context).textTheme.titleLarge),
+            if (byCrop.isEmpty)
+              const ListTile(title: Text('No archived crop expenses')),
+            for (final expenses in byCrop.values)
+              ExpansionTile(
+                key: PageStorageKey(expenses.first.cropId),
+                title: Text(expenses.first.cropName ?? 'Archived crop'),
+                children: expenses.map(_archivedExpenseTile).toList(),
+              ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _archivedExpenseTile(Expense expense) => ListTile(
+    title: Text(expense.title),
+    subtitle: Text(DateFormat.yMMMd().format(expense.date)),
+    trailing: Text('Rs. ${expense.amount.toStringAsFixed(2)}'),
+  );
 
   Widget _buildOverviewTab() {
     return Consumer<HistoryProvider>(
