@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.0](https://github.com/Nuwantha97/farm-app/compare/farm_app-v1.3.0...farm_app-v1.4.0) (2026-11-27)
+
+
+### Features
+
+* add expense archiving and history sync ([d53e7a5](https://github.com/Nuwantha97/farm-app/commit/d53e7a5f03db3a18a8001ddccebc0abffe62e7db))
+* implement history clearing feature with cloud sync support ([93eef33](https://github.com/Nuwantha97/farm-app/commit/93eef33ae0d723f763090ff81b1e06ee233ddee9))
+* Implement live farm synchronization and improve crop management ([2394aa4](https://github.com/Nuwantha97/farm-app/commit/2394aa45cdde11e3bbd33d65e051fb9a76205126))
+
 ## [1.3.0](https://github.com/Nuwantha97/farm-app/compare/farm_app-v1.2.0...farm_app-v1.3.0) (2026-11-27)
 
 
