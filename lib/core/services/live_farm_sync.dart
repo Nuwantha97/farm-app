@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'farm_reset_service.dart';
 import 'hive_service.dart';
 import 'history_clear_service.dart';
 import 'sync_service.dart';
@@ -54,18 +55,20 @@ class LiveFarmSync {
 
     final account = FirebaseFirestore.instance.collection('users').doc(uid);
     final archive = HistoryClearService.marker(account);
-    _collections.add(
-      archive.snapshots(includeMetadataChanges: true).listen(
-        (snapshot) {
-          if (!snapshot.metadata.isFromCache &&
-              !snapshot.metadata.hasPendingWrites) {
-            _scheduleSync(localId);
-          }
-        },
-        onError: (Object error) =>
-            debugPrint('Could not watch history clear: $error'),
-      ),
-    );
+    for (final marker in [archive, FarmResetService.marker(account)]) {
+      _collections.add(
+        marker.snapshots(includeMetadataChanges: true).listen(
+          (snapshot) {
+            if (!snapshot.metadata.isFromCache &&
+                !snapshot.metadata.hasPendingWrites) {
+              _scheduleSync(localId);
+            }
+          },
+          onError: (Object error) =>
+              debugPrint('Could not watch ${marker.path}: $error'),
+        ),
+      );
+    }
     _watchCropExpenses(account.collection('crops'), 'expenses', localId);
     _watchCropExpenses(
       archive.collection('crops_history'),

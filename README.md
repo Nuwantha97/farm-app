@@ -84,6 +84,20 @@ To archive a farm-wide expense, long-press it in **Finance → Common Expenses**
 
 Use **History → Clear History → Clear on all devices** to delete archives while keeping current crop and expense records. The app saves the request in Hive before clearing this device. **Cloud deletion pending** stays visible until Firebase confirms the deletion after sync resumes. The `history/archive` document now records the clear cutoff so older archives cannot be uploaded again. Publish the updated Firestore rules to enable this feature.
 
+Use **Settings → Reset Farm Data** while signed in, online, and with cloud sync enabled. Type `RESET` to delete all current and archived farm records while keeping the account, profile, and app settings. If the connection is interrupted, open the same action again to finish the reset. Other devices clear their previous farm data before syncing again.
+
+Deploy the updated Firestore rules before using the reset in production. FarmApp deletes the signed-in user's records directly in Firestore batches, including expenses whose parent crops were previously deleted. The reset works on the Firebase Spark plan within Firestore's quotas. Update all devices to a version that supports farm resets so they can sync afterward.
+
+```powershell
+firebase deploy --only firestore:rules --project farm-project
+```
+
+The `users/{firebaseUid}/operations/farm_reset` marker identifies the reset across devices. While it is running, Firestore rules allow deletion batches for that reset and block ordinary farm writes. When all batches have finished, the app marks the reset complete and clears Hive farm records. Other devices apply the new farm generation before they upload pending edits. Run the rules regression test with the Firebase emulators.
+
+```powershell
+firebase emulators:exec --project demo-farm-reset --only auth,firestore "node --test test/firestore_reset.test.cjs"
+```
+
 ### Authentication and Firestore storage
 
 Firebase Authentication handles registration and first sign-in on a device. On later sign-ins, the app can verify the password against its local salted hash while offline. Hive keeps the hash, salt, and Firebase UID in `users`, and the `settings` box lets the app restore the session when it restarts. [Auth service](lib/features/auth/services/auth_service.dart)
@@ -113,7 +127,7 @@ Sale amounts and estimated consumption values live on crop documents. Crop and e
 
 ### Firestore access and current limits
 
-- The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. Publish the updated `firestore.rules` before using cloud expense history. From the project root, run `firebase deploy --only firestore:rules --project farm-project-8f792`. The app writes the history documents when it syncs. [Firestore rules](firestore.rules)
+- The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. Publish the updated `firestore.rules` before using cloud expense history. From the project root, run `firebase deploy --only firestore:rules --project farm-project`. The app writes the history documents when it syncs. [Firestore rules](firestore.rules)
 - The account deletion flow attempts to remove the Firebase Authentication account and clears local Hive data. The separate Firestore cleanup method is unconnected to that flow, so cloud farm documents can remain. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore cleanup method](lib/core/services/sync_service.dart)
 
 ### Project Structure

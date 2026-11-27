@@ -33,10 +33,77 @@ service cloud.firestore {
     function isArchivedCrop(data) {
       return data.get('isArchived', false) || data.get('archivedAt', null) != null;
     }
+
+    function resetMarker(userId) {
+      return /databases/$(database)/documents/users/$(userId)/operations/farm_reset;
+    }
+
+    function farmResetBatch(userId, before) {
+      let after = getAfter(resetMarker(userId));
+      return before != null && after != null && before.data.status == 'running' &&
+        after.data.status == 'running' && after.data.generation == before.data.generation &&
+        after.data.get('batchToken', '') != before.data.get('batchToken', '');
+    }
+
+    function farmResetDeletes(userId) {
+      return farmResetBatch(userId, get(resetMarker(userId)));
+    }
+
+    function farmCanDelete(userId) {
+      let state = get(resetMarker(userId));
+      return state == null || state.data.status == 'complete' || farmResetBatch(userId, state);
+    }
+
+    function farmCanWrite(userId, data) {
+      return !exists(resetMarker(userId)) ||
+        (get(resetMarker(userId)).data.status == 'complete' &&
+         data.get('farmGeneration', null) == get(resetMarker(userId)).data.generation);
+    }
+
+    function isResetId(value) {
+      return value is string && value.matches('^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$');
+    }
+
+    function isRunningReset(data) {
+      return data.keys().hasOnly(['generation', 'baseGeneration', 'status', 'batchToken']) &&
+        data.status == 'running' && isResetId(data.generation) && isResetId(data.batchToken) &&
+        (data.baseGeneration == null || isResetId(data.baseGeneration));
+    }
     
     // ===== User Profile =====
     match /users/{userId} {
       allow read, write: if isAuthenticated() && isOwner(userId);
+
+      match /operations/farm_reset {
+        allow get: if isAuthenticated() && isOwner(userId);
+        allow create: if isAuthenticated() && isOwner(userId) &&
+          isRunningReset(request.resource.data) && request.resource.data.baseGeneration == null;
+        allow update: if isAuthenticated() && isOwner(userId) && (
+          (resource.data.status == 'complete' && isRunningReset(request.resource.data) &&
+           request.resource.data.baseGeneration == resource.data.generation &&
+           request.resource.data.generation != resource.data.generation) ||
+          (resource.data.status == 'running' && resource.data.get('leaseUntil', request.time) <= request.time &&
+           request.resource.data.generation == resource.data.generation && (
+             (isRunningReset(request.resource.data) &&
+              request.resource.data.baseGeneration == resource.data.baseGeneration &&
+              request.resource.data.batchToken != resource.data.get('batchToken', '')) ||
+             (request.resource.data.status == 'complete' &&
+              request.resource.data.keys().hasOnly(['generation', 'status']))
+           ))
+        );
+      }
+
+      // A reset queries these collection groups under this user's document.
+      // This exposes orphaned expenses whose crop document was deleted earlier.
+      match /{parent=**}/expenses/{expenseId} {
+        allow list: if isAuthenticated() && isOwner(userId) &&
+          get(resetMarker(userId)).data.status == 'running';
+      }
+
+      match /{parent=**}/expenses_history/{expenseId} {
+        allow list: if isAuthenticated() && isOwner(userId) &&
+          get(resetMarker(userId)).data.status == 'running';
+      }
       
       // ===== Crops =====
       match /crops/{cropId} {
@@ -44,10 +111,12 @@ service cloud.firestore {
         allow create: if isAuthenticated() && isOwner(userId)
           && isValidString(request.resource.data.name)
           && isValidString(request.resource.data.type)
+          && farmCanWrite(userId, request.resource.data)
           && (!isArchivedCrop(request.resource.data) || acceptsArchive(userId, request.resource.data));
         allow update: if isAuthenticated() && isOwner(userId)
+          && farmCanWrite(userId, request.resource.data)
           && (!isArchivedCrop(request.resource.data) || acceptsArchive(userId, request.resource.data));
-        allow delete: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
         
         // ===== Crop Expenses =====
         match /expenses/{expenseId} {
@@ -59,9 +128,11 @@ service cloud.firestore {
           allow read: if isAuthenticated() && isOwner(userId);
           allow create: if isAuthenticated() && isOwner(userId)
             && isValidString(request.resource.data.title)
-            && isValidNumber(request.resource.data.amount) && ownerCropAcceptsExpense();
-          allow update: if isAuthenticated() && isOwner(userId) && ownerCropAcceptsExpense();
-          allow delete: if isAuthenticated() && isOwner(userId);
+            && isValidNumber(request.resource.data.amount) && ownerCropAcceptsExpense()
+            && farmCanWrite(userId, request.resource.data);
+          allow update: if isAuthenticated() && isOwner(userId) && ownerCropAcceptsExpense()
+            && farmCanWrite(userId, request.resource.data);
+          allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
         }
       }
       
@@ -70,31 +141,34 @@ service cloud.firestore {
         allow read: if isAuthenticated() && isOwner(userId);
         allow create: if isAuthenticated() && isOwner(userId)
           && isValidString(request.resource.data.title)
-          && isValidNumber(request.resource.data.amount);
-        allow update: if isAuthenticated() && isOwner(userId);
-        allow delete: if isAuthenticated() && isOwner(userId);
+            && isValidNumber(request.resource.data.amount) && farmCanWrite(userId, request.resource.data);
+        allow update: if isAuthenticated() && isOwner(userId) && farmCanWrite(userId, request.resource.data);
+        allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
       }
       
       // ===== Crop History (archived crops) =====
       match /crop_history/{historyId} {
         allow read: if isAuthenticated() && isOwner(userId);
         allow create, update: if isAuthenticated() && isOwner(userId)
-          && acceptsArchive(userId, request.resource.data);
-        allow delete: if isAuthenticated() && isOwner(userId);
+          && acceptsArchive(userId, request.resource.data) && farmCanWrite(userId, request.resource.data);
+        allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
       }
 
       match /history/archive {
         allow get: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && isOwner(userId) && farmResetDeletes(userId);
         allow create, update: if isAuthenticated() && isOwner(userId)
-          && request.resource.data.keys().hasOnly(['clearedThrough'])
+          && request.resource.data.keys().hasOnly(['clearedThrough', 'farmGeneration'])
+          && farmCanWrite(userId, request.resource.data)
           && request.resource.data.clearedThrough is timestamp
           && request.resource.data.clearedThrough <= request.time
           && (resource == null || request.resource.data.clearedThrough > resource.data.clearedThrough);
 
         match /crops_history/{cropId} {
-          allow read, delete: if isAuthenticated() && isOwner(userId);
+          allow read: if isAuthenticated() && isOwner(userId);
+          allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
           allow create, update: if isAuthenticated() && isOwner(userId)
-            && acceptsArchive(userId, request.resource.data);
+            && acceptsArchive(userId, request.resource.data) && farmCanWrite(userId, request.resource.data);
 
           match /expenses_history/{expenseId} {
             function parentAcceptsArchiveExpense() {
@@ -102,16 +176,19 @@ service cloud.firestore {
               return !exists(historyMarker(userId)) ||
                 (crop.data != null && acceptsArchive(userId, crop.data));
             }
-            allow read, delete: if isAuthenticated() && isOwner(userId);
+            allow read: if isAuthenticated() && isOwner(userId);
+            allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
             allow create, update: if isAuthenticated() && isOwner(userId)
-              && acceptsArchive(userId, request.resource.data) && parentAcceptsArchiveExpense();
+              && acceptsArchive(userId, request.resource.data) && parentAcceptsArchiveExpense()
+              && farmCanWrite(userId, request.resource.data);
           }
         }
 
         match /common_expenses_history/{expenseId} {
-          allow read, delete: if isAuthenticated() && isOwner(userId);
+          allow read: if isAuthenticated() && isOwner(userId);
+          allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
           allow create, update: if isAuthenticated() && isOwner(userId)
-            && acceptsArchive(userId, request.resource.data);
+            && acceptsArchive(userId, request.resource.data) && farmCanWrite(userId, request.resource.data);
         }
       }
       
@@ -120,9 +197,9 @@ service cloud.firestore {
         allow read: if isAuthenticated() && isOwner(userId);
         allow create: if isAuthenticated() && isOwner(userId)
           && isValidString(request.resource.data.cropId)
-          && isValidNumber(request.resource.data.amount);
-        allow update: if isAuthenticated() && isOwner(userId);
-        allow delete: if isAuthenticated() && isOwner(userId);
+            && isValidNumber(request.resource.data.amount) && farmCanWrite(userId, request.resource.data);
+        allow update: if isAuthenticated() && isOwner(userId) && farmCanWrite(userId, request.resource.data);
+        allow delete: if isAuthenticated() && isOwner(userId) && farmCanDelete(userId);
       }
     }
     
