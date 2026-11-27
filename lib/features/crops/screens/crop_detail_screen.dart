@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
@@ -325,8 +325,12 @@ class _CropDetailScreenState extends State<CropDetailScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Crop'),
-        content: Text('Are you sure you want to delete "${crop.name}"?'),
+        title: const Text('Delete Crop Permanently'),
+        content: Text(
+          'Are you sure you want to permanently delete "${crop.name}"?\n\n'
+          'This will remove the crop and all its data, including from History. '
+          'This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),

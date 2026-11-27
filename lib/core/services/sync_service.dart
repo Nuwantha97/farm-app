@@ -138,6 +138,13 @@ class SyncService {
       conflicts += commonResult.conflicts;
       errors.addAll(commonResult.errors);
 
+      // Sync crop history (archived crops)
+      final historyResult = await _syncCropHistory(firebaseUid);
+      pushed += historyResult.pushed;
+      pulled += historyResult.pulled;
+      conflicts += historyResult.conflicts;
+      errors.addAll(historyResult.errors);
+
       // Update last sync time
       await HiveService.settingsBox
           .put('lastSyncTime', DateTime.now().toIso8601String());
@@ -219,11 +226,41 @@ class SyncService {
       }
     }
 
+    // Pull crop history
+    final historySnap = await _db
+        .collection('users')
+        .doc(firebaseUid)
+        .collection('crop_history')
+        .get();
+
+    for (final doc in historySnap.docs) {
+      final data = doc.data();
+      final localId = data['localId'] ?? doc.id;
+      final key = '${userId}_$localId';
+      if (!HiveService.cropHistoryBox.containsKey(key)) {
+        final hiveData = Map<String, dynamic>.from(data);
+        hiveData['id'] = localId;
+        hiveData['firebaseId'] = doc.id;
+        hiveData['syncStatus'] = 'synced';
+        // Convert Timestamps to ISO strings for Hive
+        for (final field in ['createdAt', 'updatedAt', 'plantedDate', 'harvestedDate', 'archivedAt']) {
+          if (hiveData[field] is Timestamp) {
+            hiveData[field] = (hiveData[field] as Timestamp).toDate().toIso8601String();
+          }
+        }
+        await HiveService.cropHistoryBox.put(
+          key,
+          Map<String, dynamic>.from(hiveData),
+        );
+      }
+    }
+
     await HiveService.settingsBox
         .put('lastSyncTime', DateTime.now().toIso8601String());
 
     debugPrint('SyncService: Initial pull complete — '
-        '${cropsSnap.docs.length} crops, ${commonSnap.docs.length} common expenses');
+        '${cropsSnap.docs.length} crops, ${commonSnap.docs.length} common expenses, '
+        '${historySnap.docs.length} history entries');
   }
 
   // ── Crops sync ──────────────────────────────────────────────
@@ -603,9 +640,93 @@ class SyncService {
       await doc.reference.delete();
     }
 
+    // Delete crop history
+    final historySnap = await userRef.collection('crop_history').get();
+    for (final doc in historySnap.docs) {
+      await doc.reference.delete();
+    }
+
     // Delete user doc
     await userRef.delete();
 
     debugPrint('SyncService: Deleted all Firebase data for $firebaseUid');
+  }
+
+  // ── Crop history sync ───────────────────────────────────────
+
+  Future<SyncResult> _syncCropHistory(String firebaseUid) async {
+    int pushed = 0, pulled = 0, conflicts = 0;
+    final errors = <String>[];
+
+    final userId = _getLocalUserId(firebaseUid);
+    if (userId == null) return SyncResult(errors: ['No local user found']);
+
+    final historyRef =
+        _db.collection('users').doc(firebaseUid).collection('crop_history');
+
+    // PUSH: Upload local history entries
+    final localEntries =
+        HiveService.getItemsByUser(HiveService.cropHistoryBox, userId);
+
+    for (final entry in localEntries) {
+      final data = Map<String, dynamic>.from(entry.value);
+      final syncStatus = data['syncStatus'] ?? 'pending';
+      final firebaseId = data['firebaseId'] as String?;
+
+      try {
+        if (syncStatus == 'pending' || (syncStatus != 'synced' && firebaseId == null)) {
+          // Create in Firebase
+          final crop = Crop.fromMap(data);
+          final docRef = await historyRef.add(crop.toMap());
+          data['firebaseId'] = docRef.id;
+          data['syncStatus'] = 'synced';
+          await HiveService.cropHistoryBox
+              .put(entry.key, Map<String, dynamic>.from(data));
+          pushed++;
+        } else if (syncStatus == 'modified' && firebaseId != null) {
+          final crop = Crop.fromMap(data);
+          await historyRef.doc(firebaseId).set(crop.toMap());
+          data['syncStatus'] = 'synced';
+          await HiveService.cropHistoryBox
+              .put(entry.key, Map<String, dynamic>.from(data));
+          pushed++;
+        }
+      } catch (e) {
+        errors.add('History sync error: $e');
+      }
+    }
+
+    // PULL: Download remote history entries
+    try {
+      final remoteSnap = await historyRef.get();
+      for (final doc in remoteSnap.docs) {
+        final remoteData = doc.data();
+        final remoteLocalId = remoteData['localId'] ?? doc.id;
+        final localKey = '${userId}_$remoteLocalId';
+
+        if (!HiveService.cropHistoryBox.containsKey(localKey)) {
+          final hiveData = Map<String, dynamic>.from(remoteData);
+          hiveData['id'] = remoteLocalId;
+          hiveData['firebaseId'] = doc.id;
+          hiveData['syncStatus'] = 'synced';
+          // Convert Timestamps to ISO strings for Hive
+          for (final field in ['createdAt', 'updatedAt', 'plantedDate', 'harvestedDate', 'archivedAt']) {
+            if (hiveData[field] is Timestamp) {
+              hiveData[field] = (hiveData[field] as Timestamp).toDate().toIso8601String();
+            }
+          }
+          await HiveService.cropHistoryBox.put(
+            localKey,
+            Map<String, dynamic>.from(hiveData),
+          );
+          pulled++;
+        }
+      }
+    } catch (e) {
+      errors.add('History pull error: $e');
+    }
+
+    return SyncResult(
+        pushed: pushed, pulled: pulled, conflicts: conflicts, errors: errors);
   }
 }

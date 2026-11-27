@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../models/crop_model.dart';
 import '../services/crop_service.dart';
@@ -88,6 +88,19 @@ class CropProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       _errorMessage = 'Failed to delete crop';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Archive a crop (remove from active list, keep in history).
+  Future<bool> archiveCrop(String userId, String cropId) async {
+    try {
+      final archived = await _service.archiveCrop(userId, cropId);
+      if (archived) _triggerSync(userId);
+      return archived;
+    } catch (e) {
+      _errorMessage = 'Failed to archive crop';
       notifyListeners();
       return false;
     }

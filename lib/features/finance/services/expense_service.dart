@@ -171,7 +171,7 @@ class ExpenseService {
     }
   }
 
-  /// Get total income from sold and consumed crops.
+  /// Get total income from active (non-archived) sold and consumed crops only.
   Future<double> getTotalIncome(String userId) async {
     double total = 0.0;
     final entries = HiveService.getItemsByUser(HiveService.cropsBox, userId);
@@ -180,6 +180,7 @@ class ExpenseService {
       final data = Map<String, dynamic>.from(entry.value);
       final status = data['status'] ?? '';
       if (data['syncStatus'] == 'deleted') continue;
+      if (data['isArchived'] == true) continue;
 
       if (status == 'sold') {
         total += (data['soldAmount'] ?? 0.0).toDouble();
@@ -190,7 +191,7 @@ class ExpenseService {
     return total;
   }
 
-  /// Get income entries (sold/consumed crops) as a stream.
+  /// Get income entries (sold/consumed crops) as a stream — active only.
   Stream<List<Map<String, dynamic>>> getIncomeEntries(String userId) {
     final controller = StreamController<List<Map<String, dynamic>>>();
     controller.add(_getIncomeEntriesList(userId));
@@ -216,7 +217,8 @@ class ExpenseService {
         .where((data) {
       final status = data['status'] ?? '';
       return (status == 'sold' || status == 'consumed') &&
-          data['syncStatus'] != 'deleted';
+          data['syncStatus'] != 'deleted' &&
+          data['isArchived'] != true;
     }).map((data) {
       final status = data['status'] ?? '';
       return {
@@ -235,8 +237,58 @@ class ExpenseService {
     }).toList();
   }
 
-  /// Get total expenses for a user (all crops + common).
+  /// Get total expenses for a user — active crops only + common expenses.
+  /// Excludes expenses for archived crops.
   Future<double> getTotalExpenses(String userId) async {
+    double total = 0.0;
+
+    // Common expenses (always count)
+    final commonPrefix = '${userId}_common_';
+    for (final entry in HiveService.commonExpensesBox.toMap().entries) {
+      if (!entry.key.toString().startsWith(commonPrefix)) continue;
+      final data = Map<String, dynamic>.from(entry.value);
+      if (data['syncStatus'] == 'deleted') continue;
+      total += (data['amount'] ?? 0.0).toDouble();
+    }
+
+    // Get active (non-archived) crop IDs
+    final activeCropIds = <String>{};
+    final cropEntries =
+        HiveService.getItemsByUser(HiveService.cropsBox, userId);
+    for (final entry in cropEntries) {
+      final data = Map<String, dynamic>.from(entry.value);
+      if (data['syncStatus'] == 'deleted') continue;
+      if (data['isArchived'] == true) continue;
+      final cropId = data['id'] ?? data['localId'] ?? '';
+      if (cropId.isNotEmpty) activeCropIds.add(cropId);
+    }
+
+    // Crop expenses — only for active crops
+    final userPrefix = '${userId}_';
+    for (final entry in HiveService.expensesBox.toMap().entries) {
+      final key = entry.key.toString();
+      if (!key.startsWith(userPrefix)) continue;
+      final data = Map<String, dynamic>.from(entry.value);
+      if (data['syncStatus'] == 'deleted') continue;
+
+      // Extract cropId from key: {userId}_{cropId}_{expenseId}
+      final withoutUser = key.substring(userPrefix.length);
+      final lastUnderscore = withoutUser.lastIndexOf('_');
+      if (lastUnderscore <= 0) continue;
+      final cropId = withoutUser.substring(0, lastUnderscore);
+
+      if (activeCropIds.contains(cropId)) {
+        total += (data['amount'] ?? 0.0).toDouble();
+      }
+    }
+
+    return total;
+  }
+
+  // ── History methods ──────────────────────────────────────────
+
+  /// Get all-time total expenses (active + archived crops + common).
+  Future<double> getAllTimeTotalExpenses(String userId) async {
     double total = 0.0;
 
     // Common expenses
@@ -248,7 +300,7 @@ class ExpenseService {
       total += (data['amount'] ?? 0.0).toDouble();
     }
 
-    // Crop expenses
+    // All crop expenses (active)
     final userPrefix = '${userId}_';
     for (final entry in HiveService.expensesBox.toMap().entries) {
       if (!entry.key.toString().startsWith(userPrefix)) continue;
@@ -257,6 +309,127 @@ class ExpenseService {
       total += (data['amount'] ?? 0.0).toDouble();
     }
 
+    // Archived expense history
+    for (final entry in HiveService.expenseHistoryBox.toMap().entries) {
+      if (!entry.key.toString().startsWith(userPrefix)) continue;
+      final data = Map<String, dynamic>.from(entry.value);
+      if (data['syncStatus'] == 'deleted') continue;
+      total += (data['amount'] ?? 0.0).toDouble();
+    }
+
     return total;
+  }
+
+  /// Get all-time total income (active + archived crops).
+  Future<double> getAllTimeTotalIncome(String userId) async {
+    double total = 0.0;
+
+    // Active crops
+    final activeEntries =
+        HiveService.getItemsByUser(HiveService.cropsBox, userId);
+    for (final entry in activeEntries) {
+      final data = Map<String, dynamic>.from(entry.value);
+      final status = data['status'] ?? '';
+      if (data['syncStatus'] == 'deleted') continue;
+
+      if (status == 'sold') {
+        total += (data['soldAmount'] ?? 0.0).toDouble();
+      } else if (status == 'consumed') {
+        total += (data['consumedEstimatedAmount'] ?? 0.0).toDouble();
+      }
+    }
+
+    // Archived crops from history
+    final historyEntries =
+        HiveService.getItemsByUser(HiveService.cropHistoryBox, userId);
+    for (final entry in historyEntries) {
+      final data = Map<String, dynamic>.from(entry.value);
+      final status = data['status'] ?? '';
+
+      if (status == 'sold') {
+        total += (data['soldAmount'] ?? 0.0).toDouble();
+      } else if (status == 'consumed') {
+        total += (data['consumedEstimatedAmount'] ?? 0.0).toDouble();
+      }
+    }
+
+    return total;
+  }
+
+  /// Get all-time income entries (active + archived) as a stream.
+  Stream<List<Map<String, dynamic>>> getAllTimeIncomeEntries(String userId) {
+    final controller = StreamController<List<Map<String, dynamic>>>();
+    controller.add(_getAllTimeIncomeEntriesList(userId));
+
+    void listener() {
+      if (!controller.isClosed) {
+        controller.add(_getAllTimeIncomeEntriesList(userId));
+      }
+    }
+
+    HiveService.cropsBox.listenable().addListener(listener);
+    HiveService.cropHistoryBox.listenable().addListener(listener);
+
+    controller.onCancel = () {
+      HiveService.cropsBox.listenable().removeListener(listener);
+      HiveService.cropHistoryBox.listenable().removeListener(listener);
+    };
+
+    return controller.stream;
+  }
+
+  List<Map<String, dynamic>> _getAllTimeIncomeEntriesList(String userId) {
+    final result = <Map<String, dynamic>>[];
+
+    // Active crops
+    final activeEntries =
+        HiveService.getItemsByUser(HiveService.cropsBox, userId);
+    for (final entry in activeEntries) {
+      final data = Map<String, dynamic>.from(entry.value);
+      final status = data['status'] ?? '';
+      if (data['syncStatus'] == 'deleted') continue;
+      if (status != 'sold' && status != 'consumed') continue;
+
+      result.add({
+        'id': data['id'] ?? '',
+        'name': data['name'] ?? '',
+        'status': status,
+        'isArchived': data['isArchived'] == true,
+        'amount': status == 'sold'
+            ? (data['soldAmount'] ?? 0.0).toDouble()
+            : (data['consumedEstimatedAmount'] ?? 0.0).toDouble(),
+        'date': data['harvestedDate'] != null
+            ? DateTime.parse(data['harvestedDate'])
+            : (data['createdAt'] != null
+                ? DateTime.parse(data['createdAt'])
+                : DateTime.now()),
+      });
+    }
+
+    // Archived crops from history
+    final historyEntries =
+        HiveService.getItemsByUser(HiveService.cropHistoryBox, userId);
+    for (final entry in historyEntries) {
+      final data = Map<String, dynamic>.from(entry.value);
+      final status = data['status'] ?? '';
+      if (status != 'sold' && status != 'consumed') continue;
+
+      result.add({
+        'id': data['id'] ?? '',
+        'name': data['name'] ?? '',
+        'status': status,
+        'isArchived': true,
+        'amount': status == 'sold'
+            ? (data['soldAmount'] ?? 0.0).toDouble()
+            : (data['consumedEstimatedAmount'] ?? 0.0).toDouble(),
+        'date': data['harvestedDate'] != null
+            ? DateTime.parse(data['harvestedDate'])
+            : (data['createdAt'] != null
+                ? DateTime.parse(data['createdAt'])
+                : DateTime.now()),
+      });
+    }
+
+    return result;
   }
 }
