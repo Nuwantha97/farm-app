@@ -272,8 +272,43 @@ service cloud.firestore {
     }
 
     match /market_orders/{orderId} {
+      function safeDocumentId(value) {
+        return isValidString(value) && value.size() <= 128 && value.matches('^[^/]+$');
+      }
+
+      function validOrderQuote(data) {
+        let shop = /databases/$(database)/documents/market_profiles/$(data.sellerUid);
+        let offer = get(/databases/$(database)/documents/market_profiles/$(data.sellerUid)/listings/$(data.listingId)).data;
+        let product = data.pricePerUnitCents * data.quantity;
+        let scaledTotal = data.totalCents * 1000;
+        return get(shop).data.status == 'published' && offer.status == 'active' &&
+          data.produceName == offer.produceName && data.unit == offer.unit &&
+          data.pricePerUnitCents == offer.pricePerUnitCents &&
+          data.quantity >= offer.minimumQuantity && data.quantity <= offer.availableQuantity &&
+          (data.unit == 'kg'
+            ? (product >= scaledTotal - 500 && product < scaledTotal + 500)
+            : data.totalCents == product);
+      }
+
+      function validRequestedOrder(data) {
+        return data.keys().hasOnly(['buyerUid', 'sellerUid', 'listingId', 'produceName',
+          'unit', 'pricePerUnitCents', 'quantity', 'totalCents', 'status', 'createdAt', 'updatedAt']) &&
+          data.buyerUid == request.auth.uid && data.sellerUid != data.buyerUid &&
+          safeDocumentId(data.sellerUid) && safeDocumentId(data.listingId) &&
+          data.pricePerUnitCents is int && data.pricePerUnitCents > 0 && data.pricePerUnitCents <= 1000000000 &&
+          data.quantity is int && data.quantity > 0 && data.quantity <= 1000000000 &&
+          data.totalCents is int && data.totalCents > 0 && data.totalCents <= 1000000000000 &&
+          data.status == 'requested' && data.createdAt == request.time && data.updatedAt == request.time &&
+          validOrderQuote(data);
+      }
+
+      allow get: if isAuthenticated() && resource == null &&
+        orderId.split('~')[0] == request.auth.uid;
       allow read: if isAuthenticated() &&
         (isOwner(resource.data.buyerUid) || isOwner(resource.data.sellerUid));
+      allow create: if isAuthenticated() && orderId.split('~').size() == 2 &&
+        orderId.split('~')[0] == request.auth.uid && isResetId(orderId.split('~')[1]) &&
+        validRequestedOrder(request.resource.data);
     }
 
     // ===== Deny everything else =====

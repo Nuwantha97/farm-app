@@ -139,6 +139,8 @@ In **Market → Explore**, choose a district to browse published farmers. The ma
 
 In **Market → My Shop → Produce listings**, add or edit offers, save drafts on the device, and pause or resume offers. Publishing and resuming require an online connection and a published shop. If you start from a current crop, only its name is copied into the form. These offers are managed separately from private crop sales and Finance. Deploy the updated Firestore rules to enable listing writes.
 
+Open an active offer in **Market → Explore**, choose a quantity, review the total, and tap **Request to buy**. The request appears for both participants in **Orders**. Changed offer terms require a fresh confirmation, and each request preserves the agreed price and quantity. Requests require connectivity and leave stock available until seller acceptance is implemented. Deploy the updated Firestore rules and Market order indexes to enable requests.
+
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.

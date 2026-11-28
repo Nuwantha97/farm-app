@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import '../../../core/services/hive_service.dart';
 
-enum MarketDraftType { profile, listing }
+enum MarketDraftType { profile, listing, orderRequest }
 
 /// Unpublished edits stay local and are identified by their Firebase account.
 class MarketDraftStore {

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../auth/providers/auth_provider.dart';
 import 'market_explore_screen.dart';
+import 'market_orders_screen.dart';
 import 'my_shop_screen.dart';
 
 class MarketScreen extends StatelessWidget {
@@ -48,34 +49,7 @@ class MarketScreen extends StatelessWidget {
           children: [
             MarketExploreScreen(firebaseUid: firebaseUid),
             MyShopScreen(firebaseUid: firebaseUid),
-            const _MarketNotice(
-              Icons.receipt_long_outlined,
-              'Buying and selling orders are coming soon.',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MarketNotice extends StatelessWidget {
-  const _MarketNotice(this.icon, this.message);
-
-  final IconData icon;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 40, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
+            MarketOrdersScreen(firebaseUid: firebaseUid),
           ],
         ),
       ),

@@ -3,6 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
+    'order totals calculate cents exactly and round weight sales half up',
+    () {
+      expect(marketOrderTotal(30000, 5000, 'kg'), 150000);
+      expect(marketOrderTotal(101, 500, 'kg'), 51);
+      expect(marketOrderTotal(325, 4, 'piece'), 1300);
+      expect(marketOrderTotal(1, 1, 'kg'), isNull);
+      expect(marketOrderTotal(1000000000, 1000000000, 'piece'), isNull);
+    },
+  );
+  test(
     'market amounts preserve cents and grams and enforce unit precision',
     () {
       expect(parseListingAmount('300.05', 2), 30005);

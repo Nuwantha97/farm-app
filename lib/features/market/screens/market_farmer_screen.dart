@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../models/listing_values.dart';
 import '../services/market_firestore.dart';
+import 'market_request_dialog.dart';
 
 class MarketFarmerScreen extends StatefulWidget {
   const MarketFarmerScreen({
@@ -23,6 +24,27 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
   late final _profile = widget.market
       .profile(widget.sellerUid)
       .snapshots(includeMetadataChanges: true);
+
+  Future<void> _request(String listingId, Map<String, dynamic> offer) async {
+    final sent = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => MarketRequestDialog(
+        market: widget.market,
+        sellerUid: widget.sellerUid,
+        listingId: listingId,
+        offer: offer,
+      ),
+    );
+    if (mounted && sent == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request sent. Track it in Market → Orders → Buying.'),
+        ),
+      );
+    }
+  }
+
   late final _listings = widget.market
       .activeListings(widget.sellerUid)
       .snapshots(includeMetadataChanges: true);
@@ -75,6 +97,10 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
                 if (listings.isEmpty) return const Text('No active offers.');
                 return Column(
                   children: [
+                    if (snapshot.data!.metadata.isFromCache)
+                      const Text(
+                        'Showing last known offers. Reconnect to request a purchase.',
+                      ),
                     for (final listing in listings)
                       ListTile(
                         contentPadding: EdgeInsets.zero,
@@ -83,6 +109,15 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
                           listing.data()['produceName'] as String? ?? 'Produce',
                         ),
                         subtitle: Text(listingSummary(listing.data())),
+                        onTap:
+                            widget.sellerUid != widget.market.firebaseUid &&
+                                !snapshot.data!.metadata.isFromCache &&
+                                listingSummary(listing.data()).isNotEmpty
+                            ? () => _request(listing.id, listing.data())
+                            : null,
+                        trailing: widget.sellerUid != widget.market.firebaseUid
+                            ? const Icon(Icons.chevron_right)
+                            : null,
                       ),
                   ],
                 );

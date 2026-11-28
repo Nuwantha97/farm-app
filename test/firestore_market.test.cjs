@@ -95,8 +95,44 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await patch(403, listing, { ...offer, minimumQuantity: 21000 }, seller.idToken);
   await patch(403, listing, { ...offer, pricePerUnitCents: 0 }, seller.idToken);
   await patch(200, listing, offer, seller.idToken);
+  const requestPath = `/market_orders/${buyer.localId}~${randomUUID()}`;
+  const purchase = {
+    buyerUid: buyer.localId, sellerUid: seller.localId, listingId: 'tomatoes',
+    produceName: 'Tomatoes', unit: 'kg', pricePerUnitCents: 30000, quantity: 5000,
+    totalCents: 150000, status: 'requested',
+  };
+  const submit = (status, path, data, token) => request(status, ':commit', token, 'POST', {
+    writes: [{
+      update: {
+        name: `projects/${project}/databases/(default)/documents${path}`,
+        fields: Object.fromEntries(Object.entries(data).map(([key, value]) => [
+          key, typeof value === 'number' ? { integerValue: String(value) } : { stringValue: value },
+        ])),
+      },
+      updateTransforms: ['createdAt', 'updatedAt'].map((fieldPath) => ({ fieldPath, setToServerValue: 'REQUEST_TIME' })),
+    }],
+  });
+  await request(404, requestPath, buyer.idToken);
+  await request(403, requestPath, other.idToken);
+  await submit(403, requestPath, purchase, other.idToken);
+  await submit(403, requestPath, { ...purchase, quantity: 25000, totalCents: 750000 }, buyer.idToken);
+  await submit(403, requestPath, { ...purchase, totalCents: 149999 }, buyer.idToken);
+  await submit(200, requestPath, purchase, buyer.idToken);
+  await submit(403, requestPath, purchase, buyer.idToken);
+  await request(200, requestPath, seller.idToken);
+  await request(403, requestPath, other.idToken);
+  const storedOffer = await fetch(`${endpoint}${listing}`, {
+    headers: { Authorization: `Bearer ${buyer.idToken}` },
+  });
+  assert.equal((await storedOffer.json()).fields.availableQuantity.integerValue, '20000');
   await patch(200, listing, { ...offer, pricePerUnitCents: 32500 }, seller.idToken);
+  await submit(403, `/market_orders/${buyer.localId}~${randomUUID()}`, purchase, buyer.idToken);
+  const savedOrder = await fetch(`${endpoint}${requestPath}`, {
+    headers: { Authorization: `Bearer ${buyer.idToken}` },
+  });
+  assert.equal((await savedOrder.json()).fields.totalCents.integerValue, '150000');
   await patch(200, listing, { ...offer, status: 'paused' }, seller.idToken);
+  await submit(403, `/market_orders/${buyer.localId}~${randomUUID()}`, purchase, buyer.idToken);
   await request(403, listing, buyer.idToken);
   await request(200, listing, seller.idToken);
   await patch(200, listing, offer, seller.idToken);

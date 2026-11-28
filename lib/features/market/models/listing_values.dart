@@ -2,6 +2,19 @@ import 'package:intl/intl.dart';
 
 const marketUnits = ['kg', 'bunch', 'piece'];
 
+String formatMarketMoney(int cents) =>
+    'LKR ${NumberFormat('#,##0.00', 'en').format(cents / 100)}';
+
+int? marketOrderTotal(int priceCents, int quantity, String unit) {
+  final product = BigInt.from(priceCents) * BigInt.from(quantity);
+  final cents = unit == 'kg'
+      ? (product + BigInt.from(500)) ~/ BigInt.from(1000)
+      : product;
+  return cents > BigInt.zero && cents <= BigInt.from(1000000000000)
+      ? cents.toInt()
+      : null;
+}
+
 /// Parses decimal input exactly so money and weights stay integers.
 int? parseListingAmount(String input, int decimalPlaces) {
   final value = input.trim();
