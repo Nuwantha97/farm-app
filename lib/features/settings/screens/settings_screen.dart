@@ -262,21 +262,17 @@ class SettingsScreen extends StatelessWidget {
   // ── Logout Card ───────────────────────────────────────────
 
   Widget _logoutCard(BuildContext context) {
-    return Consumer<SettingsProvider>(
-      builder: (context, settings, _) {
-        return _actionCard(
-          context,
-          icon: Icons.logout,
-          iconColor: AppColors.info,
-          title: 'Logout',
-          subtitle: 'Sign out of your account',
-          onTap: () => _showLogoutDialog(context, settings.isSyncEnabled),
-        );
-      },
+    return _actionCard(
+      context,
+      icon: Icons.logout,
+      iconColor: AppColors.info,
+      title: 'Logout',
+      subtitle: 'Sign out of your account',
+      onTap: () => _showLogoutDialog(context),
     );
   }
 
-  void _showLogoutDialog(BuildContext context, bool syncEnabled) {
+  void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -296,9 +292,16 @@ class SettingsScreen extends StatelessWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              await context
-                  .read<AuthProvider>()
-                  .logout(syncEnabled: syncEnabled);
+              try {
+                await context.read<AuthProvider>().logout();
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Could not sign out. Please try again.'),
+                  ));
+                }
+                return;
+              }
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(
                   context,

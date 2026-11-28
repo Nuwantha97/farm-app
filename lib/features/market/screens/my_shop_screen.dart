@@ -70,6 +70,16 @@ class _MyShopScreenState extends State<MyShopScreen> {
       stream: _profile,
       builder: (context, snapshot) {
         final profile = snapshot.data?.data();
+        if (profile?['status'] == 'closed') {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Your shop is closed. Go to Settings to finish deleting this account.',
+              ),
+            ),
+          );
+        }
         final draft = _drafts.read(_draftType, _draftId);
         final published = profile?['status'] == 'published';
         final status = snapshot.hasError

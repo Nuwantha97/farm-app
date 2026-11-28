@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/services/hive_service.dart';
 import '../../../models/user_model.dart';
+import '../../market/services/market_firestore.dart';
 
 /// Offline-first authentication service.
 ///
@@ -172,6 +173,7 @@ class AuthService {
       final uid = result.user!.uid;
       if (user.firebaseUid == uid) return user;
       if (user.firebaseUid != null) {
+        await _auth.signOut();
         throw Exception('This Firebase account does not match your farm account.');
       }
 
@@ -192,44 +194,38 @@ class AuthService {
 
   // ── Logout ──────────────────────────────────────────────────
 
-  Future<void> logout({bool syncEnabled = false}) async {
-    if (syncEnabled) {
-      try {
-        await _auth.signOut();
-      } catch (e) {
-        debugPrint('AuthService: Firebase signOut failed: $e');
-      }
-    }
-  }
+  Future<void> logout() => _auth.signOut();
 
   // ── Account deletion (requires internet) ────────────────────
 
   /// Delete user account from both Hive and Firebase.
   /// Requires internet to ensure Firebase data is cleaned up.
-  Future<void> deleteAccount(String email, String password) async {
+  Future<void> deleteAccount(LocalUser localUser, String password) async {
     if (!await _isOnline()) {
       throw Exception(
           'Internet connection required to delete account');
     }
 
-    final normalizedEmail = email.toLowerCase().trim();
-
-    // Re-authenticate with Firebase and delete
     try {
       final credential = await _auth.signInWithEmailAndPassword(
-        email: normalizedEmail,
+        email: localUser.email,
         password: password,
       );
-      await credential.user!.delete();
-    } catch (e) {
-      debugPrint('AuthService: Firebase account deletion failed: $e');
-      // Still proceed with local deletion
+      final user = credential.user!;
+      if (localUser.firebaseUid != null && localUser.firebaseUid != user.uid) {
+        await _auth.signOut();
+        throw Exception('This Firebase account does not match your farm account.');
+      }
+      await MarketFirestore(user.uid).closeShopForAccountDeletion();
+      await user.delete();
+    } on FirebaseAuthException catch (error) {
+      throw Exception(_getErrorMessage(error.code));
     }
 
     // Clear all local data
     await HiveService.clearAllData();
 
-    debugPrint('AuthService: Account deleted for $normalizedEmail');
+    debugPrint('AuthService: Account deleted');
   }
 
   // ── Session restore ─────────────────────────────────────────

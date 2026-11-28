@@ -8,6 +8,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   LocalUser? _user;
+  Future<void>? _marketSignIn;
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -64,7 +65,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> signInForMarket(String password) async {
+  Future<void> signInForMarket(String password) =>
+      _marketSignIn ??= _signInForMarket(password).whenComplete(() {
+        _marketSignIn = null;
+      });
+
+  Future<void> _signInForMarket(String password) async {
     final user = _user;
     if (user == null) throw Exception('Sign in to your FarmApp account first.');
     final linked = await _authService.signInForMarket(user, password);
@@ -74,8 +80,13 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> logout({bool syncEnabled = false}) async {
-    await _authService.logout(syncEnabled: syncEnabled);
+  Future<void> logout() async {
+    try {
+      await _marketSignIn;
+    } catch (_) {
+      // Sign out even when an in-flight Market sign-in fails.
+    }
+    await _authService.logout();
     await _authService.clearSession();
     _user = null;
     notifyListeners();
@@ -89,7 +100,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _authService.deleteAccount(_user!.email, password);
+      await _authService.deleteAccount(_user!, password);
       await _authService.clearSession();
       _user = null;
       _isLoading = false;

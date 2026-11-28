@@ -228,13 +228,19 @@ service cloud.firestore {
           isValidString(place.data.name) && place.data.location is latlng;
       }
 
+      function closedProfile(data) {
+        return data.keys().hasOnly(['status', 'updatedAt']) &&
+          data.status == 'closed' && data.updatedAt == request.time;
+      }
+
       allow get: if isAuthenticated() &&
         (isOwner(sellerUid) || resource.data.status == 'published');
       allow list: if isAuthenticated() && resource.data.status == 'published';
       allow create: if isAuthenticated() && isOwner(sellerUid) &&
-        validPublishedProfile(request.resource.data);
+        (validPublishedProfile(request.resource.data) || closedProfile(request.resource.data));
       allow update: if isAuthenticated() && isOwner(sellerUid) &&
-        (validPublishedProfile(request.resource.data) ||
+        resource.data.status != 'closed' &&
+        (closedProfile(request.resource.data) || validPublishedProfile(request.resource.data) ||
          (resource.data.status == 'published' &&
           request.resource.data.status == 'hidden' &&
           request.resource.data.updatedAt == request.time &&

@@ -37,7 +37,9 @@ class _MarketRequestDialogState extends State<MarketRequestDialog> {
         listingInput(_offer['minimumQuantity'], _decimals),
   );
   bool _busy = false;
+  bool _submissionStarted = false;
   String? _message;
+  Map<String, dynamic>? _existingOrder;
 
   String get _unit => _offer['unit'] as String;
   int get _decimals => _unit == 'kg' ? 3 : 0;
@@ -48,27 +50,36 @@ class _MarketRequestDialogState extends State<MarketRequestDialog> {
     super.dispose();
   }
 
-  Future<void> _send(int quantity) async {
+  Future<void> _send(int? quantity) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _message = null;
     });
     try {
-      await _drafts.save(_type, _key, {
-        'requestId': _requestId,
-        'quantity': _quantity.text,
-      });
-      final latest = await widget.market.requestOrder(
+      if (quantity != null) {
+        await _drafts.save(_type, _key, {
+          'requestId': _requestId,
+          'quantity': _quantity.text,
+        });
+        _submissionStarted = true;
+      }
+      final result = await widget.market.requestOrder(
         requestId: _requestId,
         sellerUid: widget.sellerUid,
         listingId: widget.listingId,
         reviewed: _offer,
         quantity: quantity,
       );
+      final latest = result.revisedOffer;
       if (latest == null) {
         await _drafts.delete(_type, _key);
-        if (mounted) Navigator.pop(context, true);
+        if (!mounted) return;
+        if (result.existingOrder case final order?) {
+          setState(() => _existingOrder = order);
+        } else {
+          Navigator.pop(context, true);
+        }
         return;
       }
       if (!mounted) return;
@@ -93,6 +104,25 @@ class _MarketRequestDialogState extends State<MarketRequestDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (_existingOrder case final order?) {
+      final unit = order['unit'] as String;
+      final quantity = listingInput(order['quantity'], unit == 'kg' ? 3 : 0);
+      final price = formatMarketMoney(order['pricePerUnitCents'] as int);
+      final total = formatMarketMoney(order['totalCents'] as int);
+      return AlertDialog(
+        title: const Text('Request already sent'),
+        content: Text(
+          '${order['produceName']}\n$quantity $unit · $price per $unit\n'
+          'Total $total\n\nView the saved request in Market → Orders → Buying.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      );
+    }
     final quantity = parseListingAmount(_quantity.text, _decimals);
     final total = quantity == null
         ? null
@@ -144,6 +174,11 @@ class _MarketRequestDialogState extends State<MarketRequestDialog> {
             onPressed: _busy ? null : () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
+          if (!valid && (_pending != null || _submissionStarted))
+            TextButton(
+              onPressed: _busy ? null : () => _send(null),
+              child: const Text('Check previous request'),
+            ),
           FilledButton(
             onPressed: _busy || !valid ? null : () => _send(quantity),
             child: Text(_busy ? 'Sending…' : 'Request to buy'),

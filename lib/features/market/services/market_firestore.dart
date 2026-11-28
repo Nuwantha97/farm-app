@@ -56,6 +56,20 @@ class MarketFirestore {
     });
   }
 
+  /// Close discovery before deleting the Firebase account. A closed profile
+  /// blocks republishing from another device and contains no public details.
+  Future<void> closeShopForAccountDeletion() {
+    final document = profile(firebaseUid);
+    return _db.runTransaction<void>((transaction) async {
+      final current = await transaction.get(document);
+      if (current.data()?['status'] == 'closed') return;
+      transaction.set(document, {
+        'status': 'closed',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   Query<Map<String, dynamic>> publishedProfiles(String districtId) => _db
       .collection('market_profiles')
       .where('districtId', isEqualTo: districtId)
@@ -93,13 +107,16 @@ class MarketFirestore {
       .where(selling ? 'sellerUid' : 'buyerUid', isEqualTo: firebaseUid)
       .orderBy('createdAt', descending: true);
 
-  /// Returns updated offer terms that the buyer must review, or null on success.
-  Future<Map<String, dynamic>?> requestOrder({
+  /// Returns revised terms for review or the original order on a recovered retry.
+  Future<
+    ({Map<String, dynamic>? revisedOffer, Map<String, dynamic>? existingOrder})
+  >
+  requestOrder({
     required String requestId,
     required String sellerUid,
     required String listingId,
     required Map<String, dynamic> reviewed,
-    required int quantity,
+    required int? quantity,
   }) {
     if (sellerUid == firebaseUid) {
       throw StateError('You cannot buy your own offer.');
@@ -115,7 +132,12 @@ class MarketFirestore {
             existing['listingId'] != listingId) {
           throw StateError('This request belongs to another offer.');
         }
-        return null;
+        return (revisedOffer: null, existingOrder: existing);
+      }
+      if (quantity == null) {
+        throw StateError(
+          'No previous request was saved. Review the offer and request to buy.',
+        );
       }
       final shopData = (await transaction.get(shop)).data();
       final current = (await transaction.get(offer)).data();
@@ -132,7 +154,9 @@ class MarketFirestore {
         'availableQuantity',
         'pickupWindow',
       ];
-      if (terms.any((field) => latest[field] != reviewed[field])) return latest;
+      if (terms.any((field) => latest[field] != reviewed[field])) {
+        return (revisedOffer: latest, existingOrder: null);
+      }
       final unit = latest['unit'] as String;
       final price = latest['pricePerUnitCents'] as int;
       final total = marketOrderTotal(price, quantity, unit);
@@ -154,7 +178,7 @@ class MarketFirestore {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      return null;
+      return (revisedOffer: null, existingOrder: null);
     });
   }
 }

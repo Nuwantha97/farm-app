@@ -160,4 +160,15 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await request(200, order, buyer.idToken);
   await writeProfile(200, seller.idToken, { ...profileFields, displayName: 'Updated farm' });
   await request(200, listing, buyer.idToken);
+  await writeProfile(403, buyer.idToken, { status: 'closed' });
+  await writeProfile(403, seller.idToken, { status: 'closed', displayName: 'Retained name' });
+  await writeProfile(200, seller.idToken, { status: 'closed' });
+  await request(403, profile, buyer.idToken);
+  await request(403, listing, buyer.idToken);
+  await districtSellers(['Second farm']);
+  await writeProfile(403, seller.idToken, profileFields);
+  await submit(403, `/market_orders/${buyer.localId}~${randomUUID()}`, purchase, buyer.idToken);
+  await request(200, requestPath, buyer.idToken);
+  await writeProfile(200, buyer.idToken, { status: 'closed' }, null, `/market_profiles/${buyer.localId}`);
+  await writeProfile(403, buyer.idToken, profileFields, null, `/market_profiles/${buyer.localId}`);
 });

@@ -151,7 +151,7 @@ Open an active offer in **Market → Explore**, choose a quantity, review the to
 ### Firestore access and current limits
 
 - The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. Publish the updated `firestore.rules` before using cloud expense history. From the project root, run `firebase deploy --only firestore:rules --project farm-project`. The app writes the history documents when it syncs. [Firestore rules](firestore.rules)
-- The account deletion flow attempts to remove the Firebase Authentication account and clears local Hive data. The separate Firestore cleanup method is unconnected to that flow, so cloud farm documents can remain. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore cleanup method](lib/core/services/sync_service.dart)
+- Account deletion closes the Market profile and removes its public fields before deleting the Firebase Authentication account and clearing local Hive data. A closed shop stays out of discovery and cannot accept new requests. Existing requests remain available to the other participant. Deploy the updated Firestore rules before using this flow. Private cloud farm records can remain because they use the separate Reset Farm Data action. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore rules](firestore.rules)
 
 ### Project Structure
 
