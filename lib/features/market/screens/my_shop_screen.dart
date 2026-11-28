@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../services/market_draft_store.dart';
 import '../services/market_firestore.dart';
+import 'market_listings_screen.dart';
 
 const _draftId = 'shop';
 const _draftType = MarketDraftType.profile;
@@ -121,6 +122,18 @@ class _MyShopScreenState extends State<MyShopScreen> {
                 onPressed: _hiding ? null : _hide,
                 child: Text(_hiding ? 'Hiding…' : 'Hide shop'),
               ),
+            OutlinedButton.icon(
+              onPressed: _hiding
+                  ? null
+                  : () => Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MarketListingsScreen(market: _market),
+                      ),
+                    ),
+              icon: const Icon(Icons.eco_outlined),
+              label: const Text('Produce listings'),
+            ),
           ],
         );
       },

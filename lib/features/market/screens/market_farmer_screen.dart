@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../models/listing_values.dart';
 import '../services/market_firestore.dart';
 
 class MarketFarmerScreen extends StatefulWidget {
@@ -81,6 +82,7 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
                         title: Text(
                           listing.data()['produceName'] as String? ?? 'Produce',
                         ),
+                        subtitle: Text(listingSummary(listing.data())),
                       ),
                   ],
                 );

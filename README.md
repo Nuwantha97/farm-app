@@ -137,6 +137,8 @@ For onboarding, deploy the updated Firestore rules and indexes. In the Firebase 
 
 In **Market → Explore**, choose a district to browse published farmers. The map groups farmers by pickup point, and the list shows the same district’s results. The bundled Sri Lanka coastline comes from Natural Earth. The outline, pan, and zoom work without a tile provider. Farmer profiles and listings come from Firestore. [Natural Earth boundary data](https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_50m_admin_0_countries.geojson)
 
+In **Market → My Shop → Produce listings**, add or edit offers, save drafts on the device, and pause or resume offers. Publishing and resuming require an online connection and a published shop. If you start from a current crop, only its name is copied into the form. These offers are managed separately from private crop sales and Finance. Deploy the updated Firestore rules to enable listing writes.
+
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.

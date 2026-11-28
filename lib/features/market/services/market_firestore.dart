@@ -65,6 +65,27 @@ class MarketFirestore {
           .collection('listings')
           .where('status', isEqualTo: 'active');
 
+  CollectionReference<Map<String, dynamic>> get ownListings =>
+      profile(firebaseUid).collection('listings');
+
+  Future<void> saveListing(String id, Map<String, dynamic> fields) {
+    final listing = ownListings.doc(id);
+    return _db.runTransaction<void>((transaction) async {
+      final current = await transaction.get(listing);
+      transaction.set(listing, {
+        ...fields,
+        'status': current.data()?['status'] ?? 'active',
+      });
+    });
+  }
+
+  Future<void> setListingPaused(String id, bool paused) {
+    final listing = ownListings.doc(id);
+    return _db.runTransaction<void>((transaction) async {
+      transaction.update(listing, {'status': paused ? 'paused' : 'active'});
+    });
+  }
+
   Query<Map<String, dynamic>> orders({required bool selling}) => _db
       .collection('market_orders')
       .where(selling ? 'sellerUid' : 'buyerUid', isEqualTo: firebaseUid)

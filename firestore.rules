@@ -241,9 +241,33 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])));
 
       match /listings/{listingId} {
+        function shopIsPublished() {
+          return get(/databases/$(database)/documents/market_profiles/$(sellerUid)).data.status == 'published';
+        }
+
+        function validListing(data) {
+          return data.keys().hasOnly(['produceName', 'unit', 'pricePerUnitCents',
+              'availableQuantity', 'minimumQuantity', 'pickupWindow', 'status']) &&
+            isValidString(data.produceName) && data.produceName.size() <= 80 &&
+            data.unit in ['kg', 'bunch', 'piece'] &&
+            data.pricePerUnitCents is int && data.pricePerUnitCents > 0 &&
+            data.pricePerUnitCents <= 1000000000 &&
+            data.availableQuantity is int && data.availableQuantity > 0 &&
+            data.availableQuantity <= 1000000000 &&
+            data.minimumQuantity is int && data.minimumQuantity > 0 &&
+            data.minimumQuantity <= data.availableQuantity &&
+            isValidString(data.pickupWindow) && data.pickupWindow.size() <= 120 &&
+            (data.status == 'paused' || (data.status == 'active' && shopIsPublished()));
+        }
+
         allow read: if isAuthenticated() && (isOwner(sellerUid) ||
-          (resource.data.status == 'active' &&
-           get(/databases/$(database)/documents/market_profiles/$(sellerUid)).data.status == 'published'));
+          (resource.data.status == 'active' && shopIsPublished()));
+        allow create: if isAuthenticated() && isOwner(sellerUid) &&
+          request.resource.data.status == 'active' && validListing(request.resource.data);
+        allow update: if isAuthenticated() && isOwner(sellerUid) &&
+          (validListing(request.resource.data) ||
+            (request.resource.data.status == 'paused' &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])));
       }
     }
 

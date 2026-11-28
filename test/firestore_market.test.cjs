@@ -24,7 +24,9 @@ test('sellers can publish and hide only their own validated profiles', async () 
     assert.equal(response.status, status, await response.text());
   }
   const patch = (status, path, data, token = 'owner') => request(status, path, token, 'PATCH', {
-    fields: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, { stringValue: value }])),
+    fields: Object.fromEntries(Object.entries(data).map(([key, value]) => [
+      key, typeof value === 'number' ? { integerValue: String(value) } : { stringValue: value },
+    ])),
   });
   const [seller, buyer, other] = await Promise.all([account(), account(), account()]);
   const profile = `/market_profiles/${seller.localId}`;
@@ -84,7 +86,20 @@ test('sellers can publish and hide only their own validated profiles', async () 
     assert.ok(profiles.every((fields) => fields.placeId.stringValue === 'fixture'));
   }
   await districtSellers(['Fixture farm', 'Second farm']);
-  await patch(200, listing, { status: 'active' });
+  const offer = {
+    produceName: 'Tomatoes', unit: 'kg', pricePerUnitCents: 30000,
+    availableQuantity: 20000, minimumQuantity: 500, pickupWindow: 'Saturday 8–10 AM',
+    status: 'active',
+  };
+  await patch(403, listing, offer, buyer.idToken);
+  await patch(403, listing, { ...offer, minimumQuantity: 21000 }, seller.idToken);
+  await patch(403, listing, { ...offer, pricePerUnitCents: 0 }, seller.idToken);
+  await patch(200, listing, offer, seller.idToken);
+  await patch(200, listing, { ...offer, pricePerUnitCents: 32500 }, seller.idToken);
+  await patch(200, listing, { ...offer, status: 'paused' }, seller.idToken);
+  await request(403, listing, buyer.idToken);
+  await request(200, listing, seller.idToken);
+  await patch(200, listing, offer, seller.idToken);
   await patch(200, order, { buyerUid: buyer.localId, sellerUid: seller.localId });
   await request(403, '/market_places/fixture');
   await request(200, '/market_places/fixture', buyer.idToken);
@@ -105,6 +120,7 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await request(403, profile, buyer.idToken);
   await request(403, listing, buyer.idToken);
   await request(200, listing, seller.idToken);
+  await patch(403, `${profile}/listings/new`, offer, seller.idToken);
   await request(200, order, buyer.idToken);
   await writeProfile(200, seller.idToken, { ...profileFields, displayName: 'Updated farm' });
   await request(200, listing, buyer.idToken);
