@@ -25,6 +25,9 @@ test('authenticated client resets only its own farm and cannot replay old batche
   const crop = `${account}/crops/current`;
   const orphan = `${account}/crops/missing/expenses/orphan`;
   const oldOrphan = `${archive}/crops_history/missing/expenses_history/orphan`;
+  const marketProfile = `market_profiles/${owner.localId}`;
+  const marketListing = `${marketProfile}/listings/rice`;
+  const marketOrder = 'market_orders/reset-fixture';
   const fields = (data) => Object.fromEntries(Object.entries(data).map(([key, value]) => [
     key, value === null ? { nullValue: null } : { stringValue: value },
   ]));
@@ -50,6 +53,9 @@ test('authenticated client resets only its own farm and cannot replay old batche
   for (const path of [account, otherCrop, ...farmPaths]) {
     await checkStatus(await patch(path, { name: 'Keep profile or clear farm data by path' }, 'owner'), 200);
   }
+  await checkStatus(await patch(marketProfile, { status: 'published' }, 'owner'), 200);
+  await checkStatus(await patch(marketListing, { status: 'active' }, 'owner'), 200);
+  await checkStatus(await patch(marketOrder, { buyerUid: other.localId, sellerUid: owner.localId }, 'owner'), 200);
   const generation = randomUUID();
   const running = { generation, status: 'running', baseGeneration: null, batchToken: randomUUID() };
   await checkStatus(await patch(marker, running, other.idToken), 403);
@@ -65,6 +71,7 @@ test('authenticated client resets only its own farm and cannot replay old batche
   }
   const batch = (paths) => [update(marker, { ...running, batchToken: randomUUID() }), ...paths.map(remove)];
   await checkStatus(await commit(batch([otherCrop])), 403);
+  await checkStatus(await commit(batch([marketListing, marketOrder])), 403);
   await checkStatus(await commit(batch([orphan, oldOrphan])), 200);
   assert.equal((await (await request(`/${marker}`, owner.idToken)).json()).fields.status.stringValue, 'running');
   await checkStatus(await commit(batch(farmPaths.filter((path) => path !== orphan && path !== oldOrphan))), 200);
@@ -75,4 +82,13 @@ test('authenticated client resets only its own farm and cannot replay old batche
   await checkStatus(await patch(crop, { name: 'New crop', type: 'Rice', farmGeneration: generation }), 200);
   await checkStatus(await commit(batch([crop])), 403);
   await checkStatus(await request(`/${crop}`, owner.idToken), 200);
+  await checkStatus(await request(`/${archive}`, owner.idToken, 'PATCH', {
+    fields: {
+      clearedThrough: { timestampValue: new Date(Date.now() - 1000).toISOString() },
+      farmGeneration: { stringValue: generation },
+    },
+  }), 200);
+  for (const path of [marketProfile, marketListing, marketOrder]) {
+    await checkStatus(await request(`/${path}`, other.idToken), 200);
+  }
 });

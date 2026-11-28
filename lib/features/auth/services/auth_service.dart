@@ -216,7 +216,7 @@ class AuthService {
         await _auth.signOut();
         throw Exception('This Firebase account does not match your farm account.');
       }
-      await MarketFirestore(user.uid).closeShopForAccountDeletion();
+      await MarketFirestore(user.uid).closeMarketForAccountDeletion();
       await user.delete();
     } on FirebaseAuthException catch (error) {
       throw Exception(_getErrorMessage(error.code));

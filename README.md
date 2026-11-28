@@ -145,6 +145,16 @@ In **Orders → Selling**, accepting a request reserves stock in the same Firest
 
 Market listens to the visible tab or detail screen and resubscribes automatically on return. It labels cached results and waits for server-confirmed data before enabling purchase and order actions. Offline profile and listing edits can still be saved as Hive drafts. Market uses the signed-in Firebase account independently of the private farm sync setting.
 
+#### Market release checks
+
+Deploy the rules and indexes to the Firebase project configured for the APK, then wait for the Market indexes to become enabled. For the FarmApp production project:
+
+```powershell
+firebase deploy --only firestore:rules,firestore:indexes --project farm-project-8f792
+```
+
+Use a seller and two buyer accounts to test published pickup locations, price changes, simultaneous requests for the last stock, cancellation, pickup, and account deletion. Check that buyers cannot read each other’s orders, reconnecting refreshes the visible tab, and Clear History and Reset Farm Data preserve Market records. Review Firestore usage during the pilot before distributing the APK.
+
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.
@@ -155,7 +165,7 @@ Market listens to the visible tab or detail screen and resubscribes automaticall
 ### Firestore access and current limits
 
 - The checked-in rules allow users to access their documents under `users/{firebaseUid}` when `request.auth.uid` matches that path. Publish the updated `firestore.rules` before using cloud expense history. From the project root, run `firebase deploy --only firestore:rules --project farm-project`. The app writes the history documents when it syncs. [Firestore rules](firestore.rules)
-- Account deletion closes the Market profile and removes its public fields before deleting the Firebase Authentication account and clearing local Hive data. A closed shop stays out of discovery and cannot accept new requests. Existing requests remain available to the other participant. Deploy the updated Firestore rules before using this flow. Private cloud farm records can remain because they use the separate Reset Farm Data action. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore rules](firestore.rules)
+- Account deletion closes the Market profile, declines unanswered selling requests, withdraws unanswered buying requests, and cancels accepted orders to release their stock. It then deletes the Firebase Authentication account and clears local Hive data. Other participants retain their order records. If a connection drops, retry account deletion to finish cleanup. Deploy the updated Firestore rules and indexes before using this flow. Private cloud farm records use the separate Reset Farm Data action. [Auth service](lib/features/auth/services/auth_service.dart) · [Firestore rules](firestore.rules)
 
 ### Project Structure
 

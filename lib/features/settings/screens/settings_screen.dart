@@ -385,7 +385,7 @@ class SettingsScreen extends StatelessWidget {
       icon: Icons.delete_forever,
       iconColor: AppColors.error,
       title: 'Delete Account',
-      subtitle: 'Permanently remove your account & data',
+        subtitle: 'Permanently remove your account',
       onTap: () => _showDeleteDialog(context),
     );
   }
@@ -397,6 +397,7 @@ class SettingsScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
@@ -412,8 +413,11 @@ class SettingsScreen extends StatelessWidget {
           children: [
             const Text(
               'This action is permanent and cannot be undone.\n'
-              'All your data will be deleted.\n\n'
-              'Enter your password and type DELETE to confirm:',
+              'Your shop will close and open Market orders will be resolved. '
+              'Accepted orders will be cancelled and their reserved stock released. '
+              'Other participants can still see their orders.\n\n'
+              'To erase private cloud farm records, use Reset Farm Data before deleting your account.\n\n'
+              'Enter your password and type DELETE to confirm.',
               style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 16),

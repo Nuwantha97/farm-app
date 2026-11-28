@@ -220,6 +220,31 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await commit(403, seller.idToken, [change(remainingOrder, 'cancelled'), ...stockUpdate(remainingOrder, 5000, 0)]);
   const finalStock = await fetch(`${endpoint}${listing}`, { headers: { Authorization: `Bearer ${seller.idToken}` } });
   assert.equal((await finalStock.json()).fields.availableQuantity.integerValue, '0');
+  const openAtClosure = `/market_orders/${buyer.localId}~${randomUUID()}`;
+  const reservedAtClosure = `/market_orders/${other.localId}~${randomUUID()}`;
+  await commit(200, seller.idToken, [update(listing, { availableQuantity: { integerValue: '10000' } })]);
+  await submit(200, openAtClosure, purchase, buyer.idToken);
+  await submit(200, reservedAtClosure, { ...purchase, buyerUid: other.localId }, other.idToken);
+  await commit(200, seller.idToken, [change(reservedAtClosure, 'accepted'), ...stockUpdate(reservedAtClosure, 5000, 5000)]);
+  const openSelling = async () => {
+    const response = await fetch(`${endpoint}:runQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${seller.idToken}` },
+      body: JSON.stringify({ structuredQuery: {
+        from: [{ collectionId: 'market_orders' }],
+        where: { compositeFilter: { op: 'AND', filters: [
+          { fieldFilter: { field: { fieldPath: 'sellerUid' }, op: 'EQUAL', value: { stringValue: seller.localId } } },
+          { fieldFilter: { field: { fieldPath: 'status' }, op: 'IN', value: {
+            arrayValue: { values: [{ stringValue: 'requested' }, { stringValue: 'accepted' }] },
+          } } },
+        ] } },
+        limit: 50,
+      } }),
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+    return (await response.json()).flatMap((row) => row.document ? [row.document.name] : []).sort();
+  };
+  assert.deepEqual(await openSelling(), [documentName(openAtClosure), documentName(reservedAtClosure)].sort());
   await writeProfile(403, buyer.idToken, { status: 'closed' });
   await writeProfile(403, seller.idToken, { status: 'closed', displayName: 'Retained name' });
   await writeProfile(200, seller.idToken, { status: 'closed' });
@@ -227,8 +252,24 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await request(403, listing, buyer.idToken);
   await districtSellers(['Second farm']);
   await writeProfile(403, seller.idToken, profileFields);
+  await commit(403, seller.idToken, [change(openAtClosure, 'accepted'), ...stockUpdate(openAtClosure, 0, 10000)]);
+  await commit(200, seller.idToken, [change(openAtClosure, 'declined')]);
+  await commit(200, seller.idToken, [change(reservedAtClosure, 'cancelled'), ...stockUpdate(reservedAtClosure, 10000, 0)]);
+  assert.deepEqual(await openSelling(), []);
+  await request(200, reservedAtClosure, other.idToken);
   await submit(403, `/market_orders/${buyer.localId}~${randomUUID()}`, purchase, buyer.idToken);
   await request(200, requestPath, buyer.idToken);
+  const otherListing = `/market_profiles/${other.localId}/listings/tomatoes`;
+  await patch(200, otherListing, offer, other.idToken);
+  const closingBuyer = `/market_orders/${buyer.localId}~${randomUUID()}`;
+  await submit(200, closingBuyer, { ...purchase, sellerUid: other.localId }, buyer.idToken);
   await writeProfile(200, buyer.idToken, { status: 'closed' }, null, `/market_profiles/${buyer.localId}`);
+  await submit(403, `/market_orders/${buyer.localId}~${randomUUID()}`, { ...purchase, sellerUid: other.localId }, buyer.idToken);
+  await commit(403, other.idToken, [
+    change(closingBuyer, 'accepted'),
+    update(otherListing, { availableQuantity: { integerValue: '15000' }, reservedQuantity: { integerValue: '5000' } }),
+    update(`${otherListing}/operations/stock`, { orderId: { stringValue: closingBuyer.split('/').at(-1) } }),
+  ]);
+  await commit(200, buyer.idToken, [change(closingBuyer, 'cancelled')]);
   await writeProfile(403, buyer.idToken, profileFields, null, `/market_profiles/${buyer.localId}`);
 });

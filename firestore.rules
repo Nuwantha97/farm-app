@@ -204,6 +204,11 @@ service cloud.firestore {
     }
     
     // ===== Market =====
+    function marketAccountOpen(uid) {
+      let path = /databases/$(database)/documents/market_profiles/$(uid);
+      return !existsAfter(path) || getAfter(path).data.status != 'closed';
+    }
+
     function marketStockChange(before, after, previous, next) {
       let quantity = previous.quantity;
       let reserved = before.get('reservedQuantity', 0);
@@ -353,7 +358,7 @@ service cloud.firestore {
           data.quantity is int && data.quantity > 0 && data.quantity <= 1000000000 &&
           data.totalCents is int && data.totalCents > 0 && data.totalCents <= 1000000000000 &&
           data.status == 'requested' && data.createdAt == request.time && data.updatedAt == request.time &&
-          validOrderQuote(data);
+          marketAccountOpen(data.buyerUid) && validOrderQuote(data);
       }
 
       function stockMatchesOrder(before, after) {
@@ -373,7 +378,8 @@ service cloud.firestore {
             (before.status == 'requested' && (
               (after.status == 'declined' && seller) ||
               (after.status == 'cancelled' && buyer) ||
-              (after.status == 'accepted' && seller && get(shop).data.status == 'published' &&
+              (after.status == 'accepted' && seller && getAfter(shop).data.status == 'published' &&
+               marketAccountOpen(before.buyerUid) &&
                stockMatchesOrder(before, after)))) ||
             (before.status == 'accepted' && (
               (after.status == 'cancelled' && (seller || buyer)) ||

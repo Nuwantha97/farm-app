@@ -58,9 +58,9 @@ class MarketFirestore {
 
   /// Close discovery before deleting the Firebase account. A closed profile
   /// blocks republishing from another device and contains no public details.
-  Future<void> closeShopForAccountDeletion() {
+  Future<void> closeMarketForAccountDeletion() async {
     final document = profile(firebaseUid);
-    return _db.runTransaction<void>((transaction) async {
+    await _db.runTransaction<void>((transaction) async {
       final current = await transaction.get(document);
       if (current.data()?['status'] == 'closed') return;
       transaction.set(document, {
@@ -68,6 +68,34 @@ class MarketFirestore {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
+    await _resolveOpenOrders(selling: true);
+    await _resolveOpenOrders(selling: false);
+  }
+
+  Future<void> _resolveOpenOrders({required bool selling}) async {
+    const openStatuses = ['requested', 'accepted'];
+    const server = GetOptions(source: Source.server);
+    final openOrders = _db
+        .collection('market_orders')
+        .where(selling ? 'sellerUid' : 'buyerUid', isEqualTo: firebaseUid)
+        .where('status', whereIn: openStatuses)
+        .limit(50);
+    while (true) {
+      final orders = (await openOrders.get(server)).docs;
+      if (orders.isEmpty) return;
+      for (final order in orders) {
+        final status = order.data()['status'] as String;
+        final destination = selling && status == 'requested'
+            ? 'declined'
+            : 'cancelled';
+        try {
+          await changeOrderStatus(order.id, status, destination);
+        } on StateError {
+          final latest = (await order.reference.get(server)).data()?['status'];
+          if (openStatuses.contains(latest)) rethrow;
+        }
+      }
+    }
   }
 
   Query<Map<String, dynamic>> publishedProfiles(String districtId) => _db
