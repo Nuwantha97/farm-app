@@ -203,6 +203,28 @@ service cloud.firestore {
       }
     }
     
+    // ===== Market =====
+    match /market_places/{placeId} {
+      allow read: if isAuthenticated();
+    }
+
+    match /market_profiles/{sellerUid} {
+      allow get: if isAuthenticated() &&
+        (isOwner(sellerUid) || resource.data.status == 'published');
+      allow list: if isAuthenticated() && resource.data.status == 'published';
+
+      match /listings/{listingId} {
+        allow read: if isAuthenticated() && (isOwner(sellerUid) ||
+          (resource.data.status == 'active' &&
+           get(/databases/$(database)/documents/market_profiles/$(sellerUid)).data.status == 'published'));
+      }
+    }
+
+    match /market_orders/{orderId} {
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.buyerUid) || isOwner(resource.data.sellerUid));
+    }
+
     // ===== Deny everything else =====
     match /{document=**} {
       allow read, write: if false;

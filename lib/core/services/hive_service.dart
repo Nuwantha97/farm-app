@@ -19,6 +19,7 @@ class HiveService {
   static const String expenseHistoryBoxName = 'expense_history';
   static const String commonExpenseHistoryBoxName = 'common_expense_history';
   static const String settingsBoxName = 'settings';
+  static const String marketDraftsBoxName = 'market_drafts';
 
   static late Box<Map> _usersBox;
   static late Box<Map> _cropsBox;
@@ -28,6 +29,7 @@ class HiveService {
   static late Box<Map> _expenseHistoryBox;
   static late Box<Map> _commonExpenseHistoryBox;
   static late Box _settingsBox;
+  static late Box<Map> _marketDraftsBox;
 
   /// Initialize Hive and open all encrypted boxes.
   /// Must be called before runApp() in main().
@@ -53,6 +55,10 @@ class HiveService {
     );
     _settingsBox =
         await Hive.openBox(settingsBoxName, encryptionCipher: cipher);
+    _marketDraftsBox = await Hive.openBox<Map>(
+      marketDraftsBoxName,
+      encryptionCipher: cipher,
+    );
   }
 
   /// Get or create the AES-256 encryption key from secure storage.
@@ -85,6 +91,7 @@ class HiveService {
   static Box<Map> get expenseHistoryBox => _expenseHistoryBox;
   static Box<Map> get commonExpenseHistoryBox => _commonExpenseHistoryBox;
   static Box get settingsBox => _settingsBox;
+  static Box<Map> get marketDraftsBox => _marketDraftsBox;
 
   // ── Data operations ────────────────────────────────────────────
 
@@ -121,6 +128,7 @@ class HiveService {
     await _expenseHistoryBox.clear();
     await _commonExpenseHistoryBox.clear();
     await _settingsBox.clear();
+    await _marketDraftsBox.clear();
     debugPrint('HiveService: Cleared ALL data including user credentials');
   }
 

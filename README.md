@@ -118,6 +118,21 @@ users/{firebaseUid}
 
 Sale amounts and estimated consumption values live on crop documents. Crop and expense snapshots sync under `history/archive`. The app still reads the legacy `crop_history` collection and copies those snapshots into the new structure during sync. Original crop expenses remain linked to their source crop and are excluded from current lists once it is archived. For common expenses, Firestore writes the archive copy and deletes the current document in one batch. [Sync service](lib/core/services/sync_service.dart)
 
+### Market storage
+
+Market uses Firebase Auth UIDs and its own Firestore collections. Hive stores unpublished edits in the encrypted `market_drafts` box. Each draft is keyed by the Firebase UID, draft type, and draft ID. Farm History and Reset Farm Data operate on private farm records. Account deletion clears local market drafts along with the rest of the local account data.
+
+| Firestore path | Record fields |
+|---|---|
+| `market_places/{placeId}` | `districtId`, `name`, and `location` (Firestore GeoPoint for a Sri Lankan town or public pickup point) |
+| `market_profiles/{sellerUid}` | `displayName`, optional `farmName`, `introduction`, `placeId`, `districtId`, `status` (`published` or `hidden`), and `updatedAt` |
+| `market_profiles/{sellerUid}/listings/{listingId}` | `produceName`, `unit`, `pricePerUnitCents`, `availableQuantity`, `minimumQuantity`, `pickupWindow`, and `status` (`active` or `paused`) |
+| `market_orders/{orderId}` | `buyerUid`, `sellerUid`, `listingId`, `produceName`, `unit`, `pricePerUnitCents`, `quantity`, `totalCents`, `status`, `createdAt`, `updatedAt`, and optional private `pickupInstructions` |
+
+Money is stored in LKR cents. Quantities use grams for kg listings and whole counts for pieces and bunches. Use Firestore timestamps for record times. Order statuses are `requested`, `accepted`, `declined`, `cancelled`, and `completed`.
+
+The storage foundation grants signed-in users read access to published profiles and their active listings. Orders are visible only to the buyer and seller. Client writes are closed until the corresponding publish and order flows are implemented with validation. A project administrator will seed `market_places` for discovery. [Market queries](lib/features/market/services/market_firestore.dart) · [Firestore rules](firestore.rules)
+
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.
