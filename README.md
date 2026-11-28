@@ -131,7 +131,9 @@ Market uses Firebase Auth UIDs and its own Firestore collections. Hive stores un
 
 Money is stored in LKR cents. Quantities use grams for kg listings and whole counts for pieces and bunches. Use Firestore timestamps for record times. Order statuses are `requested`, `accepted`, `declined`, `cancelled`, and `completed`.
 
-The storage foundation grants signed-in users read access to published profiles and their active listings. Orders are visible only to the buyer and seller. Client writes are closed until the corresponding publish and order flows are implemented with validation. A project administrator will seed `market_places` for discovery. [Market queries](lib/features/market/services/market_firestore.dart) · [Firestore rules](firestore.rules)
+Use **Market → My Shop** to save an unpublished draft, preview the public pickup point, and publish or hide your seller profile. Publish and hide require connectivity. Signed-in Market users can read published profiles and their active listings. Orders are visible only to their buyer and seller.
+
+For onboarding, deploy the updated Firestore rules and indexes. In the Firebase console, add approved Sri Lankan pickup points to `market_places`. Use a stable document ID, a consistent district name as `districtId`, the public place label as `name`, and its coordinates as a GeoPoint in `location`. Pick public places suitable for collection. Market uses these records for both the district and pickup selectors. [Market queries](lib/features/market/services/market_firestore.dart) · [Firestore rules](firestore.rules)
 
 ### How sync runs
 

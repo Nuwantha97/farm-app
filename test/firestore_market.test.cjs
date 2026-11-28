@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { test } = require('node:test');
 
-test('market discovery and orders enforce visibility and block client writes', async () => {
+test('sellers can publish and hide only their own validated profiles', async () => {
   const { GCLOUD_PROJECT: project, FIREBASE_AUTH_EMULATOR_HOST: auth, FIRESTORE_EMULATOR_HOST: store } = process.env;
   assert.ok(project?.startsWith('demo-') && auth && store, 'Use Firebase emulators with a demo project.');
   const endpoint = `http://${store}/v1/projects/${project}/databases/(default)/documents`;
@@ -37,8 +37,32 @@ test('market discovery and orders enforce visibility and block client writes', a
         where: { fieldFilter: { field: { fieldPath }, op: 'EQUAL', value: { stringValue: value } } },
       },
     });
-  await patch(200, '/market_places/fixture', { name: 'Dambulla' });
-  await patch(200, profile, { status: 'published' });
+  await request(200, '/market_places/fixture', 'owner', 'PATCH', {
+    fields: {
+      name: { stringValue: 'Fixture town' },
+      districtId: { stringValue: 'Matale' },
+      location: { geoPointValue: { latitude: 7.87, longitude: 80.65 } },
+    },
+  });
+  const profileFields = {
+    displayName: 'Fixture farm', introduction: '', placeId: 'fixture',
+    districtId: 'Matale', status: 'published',
+  };
+  const writeProfile = (status, token, data, mask) => request(status, ':commit', token, 'POST', {
+    writes: [{
+      update: {
+        name: `projects/${project}/databases/(default)/documents${profile}`,
+        fields: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, { stringValue: value }])),
+      },
+      ...(mask && { updateMask: { fieldPaths: mask } }),
+      updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+    }],
+  });
+  await writeProfile(403, buyer.idToken, profileFields);
+  await writeProfile(403, seller.idToken, { ...profileFields, districtId: 'Colombo' });
+  await writeProfile(403, seller.idToken, { ...profileFields, placeId: 'missing' });
+  await writeProfile(403, seller.idToken, { ...profileFields, email: 'private@example.test' });
+  await writeProfile(200, seller.idToken, profileFields);
   await patch(200, listing, { status: 'active' });
   await patch(200, order, { buyerUid: buyer.localId, sellerUid: seller.localId });
   await request(403, '/market_places/fixture');
@@ -53,10 +77,13 @@ test('market discovery and orders enforce visibility and block client writes', a
   await request(403, '/market_orders', buyer.idToken);
   await query(200, '', 'market_orders', 'buyerUid', buyer.localId, buyer.idToken);
   await query(403, '', 'market_orders', 'buyerUid', buyer.localId, other.idToken);
-  await patch(403, profile, { status: 'hidden' }, seller.idToken);
-  await patch(200, profile, { status: 'hidden' });
+  await writeProfile(403, buyer.idToken, { status: 'hidden' }, ['status']);
+  await writeProfile(403, seller.idToken, { status: 'hidden', displayName: 'Edited while hiding' }, ['status', 'displayName']);
+  await writeProfile(200, seller.idToken, { status: 'hidden' }, ['status']);
   await request(403, profile, buyer.idToken);
   await request(403, listing, buyer.idToken);
   await request(200, listing, seller.idToken);
   await request(200, order, buyer.idToken);
+  await writeProfile(200, seller.idToken, { ...profileFields, displayName: 'Updated farm' });
+  await request(200, listing, buyer.idToken);
 });

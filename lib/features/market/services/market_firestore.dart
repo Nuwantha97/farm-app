@@ -20,6 +20,40 @@ class MarketFirestore {
   DocumentReference<Map<String, dynamic>> profile(String sellerUid) =>
       _db.collection('market_profiles').doc(sellerUid);
 
+  Future<void> publishProfile({
+    required String displayName,
+    required String farmName,
+    required String introduction,
+    required String placeId,
+    required String districtId,
+  }) {
+    final document = profile(firebaseUid);
+    return _db.runTransaction<void>((transaction) async {
+      transaction.set(document, {
+        'displayName': displayName,
+        'farmName': farmName,
+        'introduction': introduction,
+        'placeId': placeId,
+        'districtId': districtId,
+        'status': 'published',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  Future<void> hideProfile() {
+    final document = profile(firebaseUid);
+    return _db.runTransaction<void>((transaction) async {
+      final snapshot = await transaction.get(document);
+      if (snapshot.data()?['status'] == 'published') {
+        transaction.update(document, {
+          'status': 'hidden',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
+  }
+
   Query<Map<String, dynamic>> publishedProfiles(String districtId) => _db
       .collection('market_profiles')
       .where('districtId', isEqualTo: districtId)

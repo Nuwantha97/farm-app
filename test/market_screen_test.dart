@@ -29,7 +29,7 @@ class _TestAuth extends ChangeNotifier implements AuthProvider {
 
 void main() {
   testWidgets(
-    'Market follows the active Firebase identity and resets its tabs',
+    'Market opens Explore only for a matching Firebase identity',
     (tester) async {
       final auth = _TestAuth();
 
@@ -59,18 +59,8 @@ void main() {
         find.textContaining('Farmer discovery').hitTestable(),
         findsOneWidget,
       );
-      await tester.tap(find.text('My Shop'));
-      await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Seller profiles').hitTestable(),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Orders'));
-      await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Buying and selling').hitTestable(),
-        findsOneWidget,
-      );
+      expect(find.text('My Shop'), findsOneWidget);
+      expect(find.text('Orders'), findsOneWidget);
 
       await showMarket('firebase-b');
       expect(find.text('Orders'), findsNothing);

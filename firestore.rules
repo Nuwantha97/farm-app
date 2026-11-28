@@ -209,9 +209,36 @@ service cloud.firestore {
     }
 
     match /market_profiles/{sellerUid} {
+      function validPublishedProfile(data) {
+        let fields = ['displayName', 'farmName', 'introduction', 'placeId',
+                      'districtId', 'status', 'updatedAt'];
+        return data.keys().hasOnly(fields) &&
+          isValidString(data.displayName) && data.displayName.size() <= 80 &&
+          data.get('farmName', '') is string && data.get('farmName', '').size() <= 80 &&
+          data.introduction is string && data.introduction.size() <= 400 &&
+          isValidString(data.placeId) && data.placeId.size() <= 120 &&
+          data.placeId.matches('^[^/]+$') && isValidString(data.districtId) &&
+          data.status == 'published' && data.updatedAt == request.time &&
+          validMarketPlace(data.placeId, data.districtId);
+      }
+
+      function validMarketPlace(placeId, districtId) {
+        let place = get(/databases/$(database)/documents/market_places/$(placeId));
+        return place.data.districtId == districtId &&
+          isValidString(place.data.name) && place.data.location is latlng;
+      }
+
       allow get: if isAuthenticated() &&
         (isOwner(sellerUid) || resource.data.status == 'published');
       allow list: if isAuthenticated() && resource.data.status == 'published';
+      allow create: if isAuthenticated() && isOwner(sellerUid) &&
+        validPublishedProfile(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(sellerUid) &&
+        (validPublishedProfile(request.resource.data) ||
+         (resource.data.status == 'published' &&
+          request.resource.data.status == 'hidden' &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])));
 
       match /listings/{listingId} {
         allow read: if isAuthenticated() && (isOwner(sellerUid) ||
