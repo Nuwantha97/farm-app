@@ -84,13 +84,31 @@ class MarketFirestore {
   CollectionReference<Map<String, dynamic>> get ownListings =>
       profile(firebaseUid).collection('listings');
 
-  Future<void> saveListing(String id, Map<String, dynamic> fields) {
+  Future<void> saveListing(
+    String id,
+    Map<String, dynamic> fields, {
+    Object? expectedStock,
+  }) {
     final listing = ownListings.doc(id);
     return _db.runTransaction<void>((transaction) async {
-      final current = await transaction.get(listing);
+      final current = (await transaction.get(listing)).data();
+      if (expectedStock != null &&
+          current?['availableQuantity'] != expectedStock) {
+        throw StateError(
+          'Stock changed. Reopen the offer and review the current quantity.',
+        );
+      }
+      if ((current?['reservedQuantity'] as int? ?? 0) > 0 &&
+          (current?['unit'] != fields['unit'] ||
+              current?['produceName'] != fields['produceName'])) {
+        throw StateError(
+          'Finish or cancel the reserved orders before changing the produce or unit.',
+        );
+      }
       transaction.set(listing, {
+        ...?current,
         ...fields,
-        'status': current.data()?['status'] ?? 'active',
+        'status': current?['status'] ?? 'active',
       });
     });
   }
@@ -106,6 +124,77 @@ class MarketFirestore {
       .collection('market_orders')
       .where(selling ? 'sellerUid' : 'buyerUid', isEqualTo: firebaseUid)
       .orderBy('createdAt', descending: true);
+
+  Future<void> changeOrderStatus(String id, String from, String to) {
+    final db = _db;
+    final order = db.collection('market_orders').doc(id);
+    return db.runTransaction<void>((transaction) async {
+      final data = (await transaction.get(order)).data();
+      if (data == null) throw StateError('This request is unavailable.');
+      if (data['status'] == to) return;
+      if (data['status'] != from) {
+        throw StateError(
+          'This order already changed. Review its latest status.',
+        );
+      }
+      if (to == 'accepted' || from == 'accepted') {
+        final offer = profile(data['sellerUid'] as String)
+            .collection('listings')
+            .doc(data['listingId'] as String);
+        final quantity = data['quantity'] as int;
+        if (to == 'accepted') {
+          final stock = (await transaction.get(offer)).data();
+          if (stock == null ||
+              stock['status'] != 'active' ||
+              stock['unit'] != data['unit'] ||
+              stock['produceName'] != data['produceName']) {
+            throw StateError('The original offer is no longer available.');
+          }
+          final available = stock['availableQuantity'] as int;
+          if (available < quantity) {
+            final unit = data['unit'] as String;
+            final shown = listingInput(available, unit == 'kg' ? 3 : 0);
+            throw StateError(
+              'Only $shown $unit remain. This request was not accepted.',
+            );
+          }
+        }
+        transaction.update(offer, {
+          if (to != 'completed')
+            'availableQuantity': FieldValue.increment(
+              to == 'accepted' ? -quantity : quantity,
+            ),
+          'reservedQuantity': FieldValue.increment(
+            to == 'accepted' ? quantity : -quantity,
+          ),
+        });
+        transaction.set(offer.collection('operations').doc('stock'), {
+          'orderId': id,
+        });
+      }
+      transaction.update(order, {
+        'status': to,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  Future<void> savePickupInstructions(String id, String instructions) {
+    final db = _db;
+    final order = db.collection('market_orders').doc(id);
+    return db.runTransaction<void>((transaction) async {
+      final data = (await transaction.get(order)).data();
+      if (data?['status'] != 'accepted') {
+        throw StateError(
+          'Pickup instructions can only be changed for an accepted order.',
+        );
+      }
+      transaction.update(order, {
+        'pickupInstructions': instructions,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
 
   /// Returns revised terms for review or the original order on a recovered retry.
   Future<

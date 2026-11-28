@@ -204,6 +204,24 @@ service cloud.firestore {
     }
     
     // ===== Market =====
+    function marketStockChange(before, after, previous, next) {
+      let quantity = previous.quantity;
+      let reserved = before.get('reservedQuantity', 0);
+      let available = before.availableQuantity;
+      return quantity is int && quantity > 0 && before.unit == previous.unit &&
+        before.produceName == previous.produceName &&
+        after.diff(before).affectedKeys().hasOnly(['availableQuantity', 'reservedQuantity']) &&
+        after.availableQuantity is int && after.reservedQuantity is int &&
+        after.availableQuantity >= 0 && after.reservedQuantity >= 0 &&
+        ((previous.status == 'requested' && next.status == 'accepted' &&
+          before.status == 'active' &&
+          after.availableQuantity == available - quantity && after.reservedQuantity == reserved + quantity) ||
+         (previous.status == 'accepted' && next.status == 'cancelled' &&
+          after.availableQuantity == available + quantity && after.reservedQuantity == reserved - quantity) ||
+         (previous.status == 'accepted' && next.status == 'completed' &&
+          after.availableQuantity == available && after.reservedQuantity == reserved - quantity));
+    }
+
     match /market_places/{placeId} {
       allow read: if isAuthenticated();
     }
@@ -253,27 +271,57 @@ service cloud.firestore {
 
         function validListing(data) {
           return data.keys().hasOnly(['produceName', 'unit', 'pricePerUnitCents',
-              'availableQuantity', 'minimumQuantity', 'pickupWindow', 'status']) &&
+              'availableQuantity', 'minimumQuantity', 'pickupWindow', 'status',
+              'reservedQuantity']) &&
             isValidString(data.produceName) && data.produceName.size() <= 80 &&
             data.unit in ['kg', 'bunch', 'piece'] &&
             data.pricePerUnitCents is int && data.pricePerUnitCents > 0 &&
             data.pricePerUnitCents <= 1000000000 &&
-            data.availableQuantity is int && data.availableQuantity > 0 &&
-            data.availableQuantity <= 1000000000 &&
+            data.availableQuantity is int && data.availableQuantity >= 0 &&
+            data.availableQuantity + data.get('reservedQuantity', 0) <= 1000000000 &&
             data.minimumQuantity is int && data.minimumQuantity > 0 &&
-            data.minimumQuantity <= data.availableQuantity &&
+            data.minimumQuantity <= 1000000000 &&
             isValidString(data.pickupWindow) && data.pickupWindow.size() <= 120 &&
             (data.status == 'paused' || (data.status == 'active' && shopIsPublished()));
+        }
+
+        function linkedStockUpdate(id, before, after) {
+          let path = /databases/$(database)/documents/market_orders/$(id);
+          let previous = get(path).data;
+          let next = getAfter(path).data;
+          return previous.sellerUid == sellerUid && previous.listingId == listingId &&
+            (isOwner(previous.sellerUid) || isOwner(previous.buyerUid)) &&
+            marketStockChange(before, after, previous, next);
         }
 
         allow read: if isAuthenticated() && (isOwner(sellerUid) ||
           (resource.data.status == 'active' && shopIsPublished()));
         allow create: if isAuthenticated() && isOwner(sellerUid) &&
-          request.resource.data.status == 'active' && validListing(request.resource.data);
-        allow update: if isAuthenticated() && isOwner(sellerUid) &&
-          (validListing(request.resource.data) ||
+          request.resource.data.status == 'active' && validListing(request.resource.data) &&
+          request.resource.data.availableQuantity >= request.resource.data.minimumQuantity &&
+          !request.resource.data.keys().hasAny(['reservedQuantity']);
+        allow update: if isAuthenticated() && (
+          (isOwner(sellerUid) && (
+            (validListing(request.resource.data) &&
+             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reservedQuantity']) &&
+             (resource.data.get('reservedQuantity', 0) == 0 ||
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['produceName', 'unit'])) &&
+             (request.resource.data.minimumQuantity <= request.resource.data.availableQuantity ||
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['minimumQuantity', 'availableQuantity']))) ||
             (request.resource.data.status == 'paused' &&
-             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])));
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])))) ||
+          linkedStockUpdate(
+            getAfter(/databases/$(database)/documents/market_profiles/$(sellerUid)/listings/$(listingId)/operations/stock).data.orderId,
+            resource.data, request.resource.data));
+
+        match /operations/stock {
+          allow create, update: if isAuthenticated() &&
+            request.resource.data.keys().hasOnly(['orderId']) &&
+            request.resource.data.orderId is string &&
+            linkedStockUpdate(request.resource.data.orderId,
+              get(/databases/$(database)/documents/market_profiles/$(sellerUid)/listings/$(listingId)).data,
+              getAfter(/databases/$(database)/documents/market_profiles/$(sellerUid)/listings/$(listingId)).data);
+        }
       }
     }
 
@@ -308,6 +356,33 @@ service cloud.firestore {
           validOrderQuote(data);
       }
 
+      function stockMatchesOrder(before, after) {
+        let offer = /databases/$(database)/documents/market_profiles/$(before.sellerUid)/listings/$(before.listingId);
+        let link = /databases/$(database)/documents/market_profiles/$(before.sellerUid)/listings/$(before.listingId)/operations/stock;
+        return getAfter(link).data.orderId == orderId &&
+          marketStockChange(get(offer).data, getAfter(offer).data, before, after);
+      }
+
+      function validOrderUpdate(before, after) {
+        let seller = isOwner(before.sellerUid);
+        let buyer = isOwner(before.buyerUid);
+        let shop = /databases/$(database)/documents/market_profiles/$(before.sellerUid);
+        let changes = after.diff(before).affectedKeys();
+        return after.updatedAt == request.time && (
+          (changes.hasOnly(['status', 'updatedAt']) && (
+            (before.status == 'requested' && (
+              (after.status == 'declined' && seller) ||
+              (after.status == 'cancelled' && buyer) ||
+              (after.status == 'accepted' && seller && get(shop).data.status == 'published' &&
+               stockMatchesOrder(before, after)))) ||
+            (before.status == 'accepted' && (
+              (after.status == 'cancelled' && (seller || buyer)) ||
+              (after.status == 'completed' && seller)) && stockMatchesOrder(before, after)))) ||
+          (seller && before.status == 'accepted' &&
+           changes.hasOnly(['pickupInstructions', 'updatedAt']) &&
+           isValidString(after.pickupInstructions) && after.pickupInstructions.size() <= 500));
+      }
+
       allow get: if isAuthenticated() && resource == null &&
         orderId.split('~')[0] == request.auth.uid;
       allow read: if isAuthenticated() &&
@@ -315,6 +390,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() && orderId.split('~').size() == 2 &&
         orderId.split('~')[0] == request.auth.uid && isResetId(orderId.split('~')[1]) &&
         validRequestedOrder(request.resource.data);
+      allow update: if isAuthenticated() && validOrderUpdate(resource.data, request.resource.data);
     }
 
     // ===== Deny everything else =====

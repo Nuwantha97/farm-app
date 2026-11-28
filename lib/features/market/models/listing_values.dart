@@ -16,7 +16,11 @@ int? marketOrderTotal(int priceCents, int quantity, String unit) {
 }
 
 /// Parses decimal input exactly so money and weights stay integers.
-int? parseListingAmount(String input, int decimalPlaces) {
+int? parseListingAmount(
+  String input,
+  int decimalPlaces, {
+  bool allowZero = false,
+}) {
   final value = input.trim();
   final pattern = decimalPlaces == 0
       ? RegExp(r'^[0-9]+$')
@@ -27,7 +31,9 @@ int? parseListingAmount(String input, int decimalPlaces) {
   final amount = int.tryParse(
     parts.first + fraction.padRight(decimalPlaces, '0'),
   );
-  return amount != null && amount > 0 && amount <= 1000000000 ? amount : null;
+  return amount != null && amount >= (allowZero ? 0 : 1) && amount <= 1000000000
+      ? amount
+      : null;
 }
 
 String listingInput(Object? value, int decimalPlaces) {

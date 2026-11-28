@@ -160,6 +160,66 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await request(200, order, buyer.idToken);
   await writeProfile(200, seller.idToken, { ...profileFields, displayName: 'Updated farm' });
   await request(200, listing, buyer.idToken);
+  const secondRequest = `/market_orders/${other.localId}~${randomUUID()}`;
+  await patch(200, listing, { ...offer, availableQuantity: 5000 }, seller.idToken);
+  await submit(200, secondRequest, { ...purchase, buyerUid: other.localId }, other.idToken);
+  const documentName = (path) => `projects/${project}/databases/(default)/documents${path}`;
+  const update = (path, fields) => ({
+    update: { name: documentName(path), fields },
+    updateMask: { fieldPaths: Object.keys(fields) },
+  });
+  const orderUpdate = (path, fields) => ({
+    ...update(path, fields),
+    updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+  });
+  const stockUpdate = (path, available, reserved) => [
+    update(listing, {
+      availableQuantity: { integerValue: String(available) },
+      reservedQuantity: { integerValue: String(reserved) },
+    }),
+    update(`${listing}/operations/stock`, { orderId: { stringValue: path.split('/').at(-1) } }),
+  ];
+  const change = (path, status) => orderUpdate(path, { status: { stringValue: status } });
+  const commit = (status, token, writes) => request(status, ':commit', token, 'POST', { writes });
+  const withdrawn = `/market_orders/${buyer.localId}~${randomUUID()}`;
+  const declined = `/market_orders/${buyer.localId}~${randomUUID()}`;
+  await submit(200, withdrawn, purchase, buyer.idToken);
+  await submit(200, declined, purchase, buyer.idToken);
+  await commit(403, seller.idToken, [change(withdrawn, 'cancelled')]);
+  await commit(200, buyer.idToken, [change(withdrawn, 'cancelled')]);
+  await commit(403, buyer.idToken, [change(declined, 'declined')]);
+  await commit(200, seller.idToken, [change(declined, 'declined')]);
+  await commit(403, seller.idToken, [change(requestPath, 'accepted')]);
+  await commit(403, seller.idToken, stockUpdate(requestPath, 0, 5000));
+  await commit(403, buyer.idToken, [change(requestPath, 'accepted'), ...stockUpdate(requestPath, 0, 5000)]);
+  const contenders = [[requestPath, buyer.idToken], [secondRequest, other.idToken]];
+  const results = await Promise.all(contenders.map(([path]) => fetch(`${endpoint}:commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${seller.idToken}` },
+    body: JSON.stringify({ writes: [change(path, 'accepted'), ...stockUpdate(path, 0, 5000)] }),
+  })));
+  assert.deepEqual(results.map((result) => result.status).sort(), [200, 403],
+    (await Promise.all(results.map((result) => result.text()))).join('\n'));
+  const winnerIndex = results.findIndex((result) => result.ok);
+  const [reservedOrder, reservedBuyer] = contenders[winnerIndex];
+  const [remainingOrder] = contenders[1 - winnerIndex];
+  const instructions = [orderUpdate(reservedOrder, { pickupInstructions: { stringValue: 'Pickup at the main entrance' } })];
+  await commit(403, reservedBuyer, instructions);
+  await commit(200, seller.idToken, instructions);
+  await request(200, reservedOrder, reservedBuyer);
+  await request(403, `${listing}/operations/stock`, reservedBuyer);
+  await request(403, `${listing}/operations/stock`, other.idToken);
+  await commit(403, seller.idToken, [update(listing, { unit: { stringValue: 'piece' } })]);
+  await commit(200, seller.idToken, [update(listing, { status: { stringValue: 'paused' } })]);
+  await request(403, listing, reservedBuyer);
+  await commit(200, reservedBuyer, [change(reservedOrder, 'cancelled'), ...stockUpdate(reservedOrder, 5000, 0)]);
+  await commit(403, reservedBuyer, [change(reservedOrder, 'cancelled'), ...stockUpdate(reservedOrder, 10000, 0)]);
+  await commit(200, seller.idToken, [update(listing, { status: { stringValue: 'active' } })]);
+  await commit(200, seller.idToken, [change(remainingOrder, 'accepted'), ...stockUpdate(remainingOrder, 0, 5000)]);
+  await commit(200, seller.idToken, [change(remainingOrder, 'completed'), ...stockUpdate(remainingOrder, 0, 0)]);
+  await commit(403, seller.idToken, [change(remainingOrder, 'cancelled'), ...stockUpdate(remainingOrder, 5000, 0)]);
+  const finalStock = await fetch(`${endpoint}${listing}`, { headers: { Authorization: `Bearer ${seller.idToken}` } });
+  assert.equal((await finalStock.json()).fields.availableQuantity.integerValue, '0');
   await writeProfile(403, buyer.idToken, { status: 'closed' });
   await writeProfile(403, seller.idToken, { status: 'closed', displayName: 'Retained name' });
   await writeProfile(200, seller.idToken, { status: 'closed' });

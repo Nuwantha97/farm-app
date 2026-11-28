@@ -171,13 +171,33 @@ class _ListingEditorState extends State<_ListingEditor> {
     text: _number('pricePerUnitCents', 2),
   );
   late final _available = TextEditingController(
-    text: _number('availableQuantity', _quantityDecimals),
+    text: _draftStockIsStale
+        ? (_unit == widget.listing?['unit']
+              ? listingInput(
+                  widget.listing?['availableQuantity'],
+                  _quantityDecimals,
+                )
+              : '')
+        : _number('availableQuantity', _quantityDecimals),
   );
   late final _minimum = TextEditingController(
     text: _number('minimumQuantity', _quantityDecimals),
   );
   bool _busy = false;
-  String? _error;
+  late String? _error = _draftStockIsStale
+      ? 'Stock changed since this draft. Review the available quantity.'
+      : null;
+
+  bool get _draftStockIsStale =>
+      widget.listing != null &&
+      widget.draft != null &&
+      widget.draft?['expectedStock'] != widget.listing?['availableQuantity'];
+
+  int? _stock(String? text) => parseListingAmount(
+    text ?? '',
+    _quantityDecimals,
+    allowZero: widget.listing != null,
+  );
 
   String _text(String field, [String fallback = '']) =>
       (widget.draft?[field] ?? widget.listing?[field]) as String? ?? fallback;
@@ -240,14 +260,21 @@ class _ListingEditorState extends State<_ListingEditor> {
         'unit': _unit,
         'pricePerUnitCents': _price.text,
         'availableQuantity': _available.text,
+        'expectedStock': widget.listing?['availableQuantity'],
         'minimumQuantity': _minimum.text,
         'pickupWindow': _pickup.text,
       });
       if (listing != null) {
-        await widget.market.saveListing(widget.listingId, listing);
+        await widget.market.saveListing(
+          widget.listingId,
+          listing,
+          expectedStock: widget.listing?['availableQuantity'],
+        );
         await widget.drafts.delete(_listingDraft, widget.draftKey);
       }
       if (mounted) Navigator.pop(context);
+    } on StateError catch (error) {
+      if (mounted) setState(() => _error = error.message.toString());
     } catch (_) {
       if (mounted) {
         setState(
@@ -267,10 +294,7 @@ class _ListingEditorState extends State<_ListingEditor> {
       'produceName': _name.text.trim(),
       'unit': _unit,
       'pricePerUnitCents': parseListingAmount(_price.text, 2)!,
-      'availableQuantity': parseListingAmount(
-        _available.text,
-        _quantityDecimals,
-      )!,
+      'availableQuantity': _stock(_available.text)!,
       'minimumQuantity': parseListingAmount(_minimum.text, _quantityDecimals)!,
       'pickupWindow': _pickup.text.trim(),
     };
@@ -367,7 +391,9 @@ class _ListingEditorState extends State<_ListingEditor> {
                 _available,
                 'Available quantity ($_unit)',
                 _quantityDecimals,
-                (text) => _positive(text, _quantityDecimals),
+                (text) => _stock(text) == null
+                    ? 'Enter a valid available quantity.'
+                    : null,
               ),
               _amountField(
                 _minimum,
@@ -376,12 +402,13 @@ class _ListingEditorState extends State<_ListingEditor> {
                 (text) {
                   final error = _positive(text, _quantityDecimals);
                   if (error != null) return error;
-                  final stock = parseListingAmount(
-                    _available.text,
-                    _quantityDecimals,
-                  );
-                  return stock != null &&
-                          parseListingAmount(text!, _quantityDecimals)! > stock
+                  final stock = _stock(_available.text);
+                  final minimum = parseListingAmount(text!, _quantityDecimals)!;
+                  if (stock == widget.listing?['availableQuantity'] &&
+                      minimum == widget.listing?['minimumQuantity']) {
+                    return null;
+                  }
+                  return stock != null && minimum > stock
                       ? 'Minimum order cannot exceed available quantity.'
                       : null;
                 },

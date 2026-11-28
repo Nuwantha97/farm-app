@@ -126,7 +126,7 @@ Market uses Firebase Auth UIDs and its own Firestore collections. Hive stores un
 |---|---|
 | `market_places/{placeId}` | `districtId`, `name`, and `location` (Firestore GeoPoint for a Sri Lankan town or public pickup point) |
 | `market_profiles/{sellerUid}` | `displayName`, optional `farmName`, `introduction`, `placeId`, `districtId`, `status` (`published` or `hidden`), and `updatedAt` |
-| `market_profiles/{sellerUid}/listings/{listingId}` | `produceName`, `unit`, `pricePerUnitCents`, `availableQuantity`, `minimumQuantity`, `pickupWindow`, and `status` (`active` or `paused`) |
+| `market_profiles/{sellerUid}/listings/{listingId}` | `produceName`, `unit`, `pricePerUnitCents`, `availableQuantity`, `minimumQuantity`, `pickupWindow`, and `status` (`active` or `paused`). Reservation transactions also maintain `reservedQuantity` and link each update to its order in a private `operations/stock` document. |
 | `market_orders/{orderId}` | `buyerUid`, `sellerUid`, `listingId`, `produceName`, `unit`, `pricePerUnitCents`, `quantity`, `totalCents`, `status`, `createdAt`, `updatedAt`, and optional private `pickupInstructions` |
 
 Money is stored in LKR cents. Quantities use grams for kg listings and whole counts for pieces and bunches. Use Firestore timestamps for record times. Order statuses are `requested`, `accepted`, `declined`, `cancelled`, and `completed`.
@@ -139,7 +139,9 @@ In **Market → Explore**, choose a district to browse published farmers. The ma
 
 In **Market → My Shop → Produce listings**, add or edit offers, save drafts on the device, and pause or resume offers. Publishing and resuming require an online connection and a published shop. If you start from a current crop, only its name is copied into the form. These offers are managed separately from private crop sales and Finance. Deploy the updated Firestore rules to enable listing writes.
 
-Open an active offer in **Market → Explore**, choose a quantity, review the total, and tap **Request to buy**. The request appears for both participants in **Orders**. Changed offer terms require a fresh confirmation, and each request preserves the agreed price and quantity. Requests require connectivity and leave stock available until seller acceptance is implemented. Deploy the updated Firestore rules and Market order indexes to enable requests.
+Open an active offer in **Market → Explore**, choose a quantity, review the total, and tap **Request to buy**. The request appears for both participants in **Orders**. Changed offer terms require a fresh confirmation, and each request preserves the agreed price and quantity.
+
+In **Orders → Selling**, accepting a request reserves stock in the same Firestore transaction that updates the order. Declining or withdrawing an unanswered request leaves stock available. Either participant can cancel an accepted order and release its reservation once. The seller can add private pickup instructions and mark the order collected. Completion consumes the reservation, with payment handled at pickup. Deploy the updated Firestore rules and Market order indexes before using these flows. Order actions require connectivity.
 
 ### How sync runs
 
