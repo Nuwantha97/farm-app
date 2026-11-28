@@ -135,6 +135,8 @@ Use **Market → My Shop** to save an unpublished draft, preview the public pick
 
 For onboarding, deploy the updated Firestore rules and indexes. In the Firebase console, add approved Sri Lankan pickup points to `market_places`. Use a stable document ID, a consistent district name as `districtId`, the public place label as `name`, and its coordinates as a GeoPoint in `location`. Pick public places suitable for collection. Market uses these records for both the district and pickup selectors. [Market queries](lib/features/market/services/market_firestore.dart) · [Firestore rules](firestore.rules)
 
+In **Market → Explore**, choose a district to browse published farmers. The map groups farmers by pickup point, and the list shows the same district’s results. The bundled Sri Lanka coastline comes from Natural Earth. The outline, pan, and zoom work without a tile provider. Farmer profiles and listings come from Firestore. [Natural Earth boundary data](https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_50m_admin_0_countries.geojson)
+
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.

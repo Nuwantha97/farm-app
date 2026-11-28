@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/providers/auth_provider.dart';
+import 'market_explore_screen.dart';
 import 'my_shop_screen.dart';
 
 class MarketScreen extends StatelessWidget {
@@ -45,10 +46,7 @@ class MarketScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            const _MarketNotice(
-              Icons.map_outlined,
-              'Farmer discovery in Sri Lanka is coming soon.',
-            ),
+            MarketExploreScreen(firebaseUid: firebaseUid),
             MyShopScreen(firebaseUid: firebaseUid),
             const _MarketNotice(
               Icons.receipt_long_outlined,

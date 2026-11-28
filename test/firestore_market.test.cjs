@@ -48,10 +48,10 @@ test('sellers can publish and hide only their own validated profiles', async () 
     displayName: 'Fixture farm', introduction: '', placeId: 'fixture',
     districtId: 'Matale', status: 'published',
   };
-  const writeProfile = (status, token, data, mask) => request(status, ':commit', token, 'POST', {
+  const writeProfile = (status, token, data, mask, path = profile) => request(status, ':commit', token, 'POST', {
     writes: [{
       update: {
-        name: `projects/${project}/databases/(default)/documents${profile}`,
+        name: `projects/${project}/databases/(default)/documents${path}`,
         fields: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, { stringValue: value }])),
       },
       ...(mask && { updateMask: { fieldPaths: mask } }),
@@ -63,6 +63,27 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await writeProfile(403, seller.idToken, { ...profileFields, placeId: 'missing' });
   await writeProfile(403, seller.idToken, { ...profileFields, email: 'private@example.test' });
   await writeProfile(200, seller.idToken, profileFields);
+  await writeProfile(200, other.idToken, { ...profileFields, displayName: 'Second farm' }, null,
+    `/market_profiles/${other.localId}`);
+  async function districtSellers(expectedNames) {
+    const filter = (fieldPath, stringValue) => ({
+      fieldFilter: { field: { fieldPath }, op: 'EQUAL', value: { stringValue } },
+    });
+    const response = await fetch(`${endpoint}:runQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${buyer.idToken}` },
+      body: JSON.stringify({ structuredQuery: {
+        from: [{ collectionId: 'market_profiles' }],
+        where: { compositeFilter: { op: 'AND', filters: [filter('status', 'published'), filter('districtId', 'Matale')] } },
+        orderBy: [{ field: { fieldPath: 'updatedAt' }, direction: 'DESCENDING' }],
+      } }),
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+    const profiles = (await response.json()).filter((row) => row.document).map((row) => row.document.fields);
+    assert.deepEqual(profiles.map((fields) => fields.displayName.stringValue).sort(), expectedNames);
+    assert.ok(profiles.every((fields) => fields.placeId.stringValue === 'fixture'));
+  }
+  await districtSellers(['Fixture farm', 'Second farm']);
   await patch(200, listing, { status: 'active' });
   await patch(200, order, { buyerUid: buyer.localId, sellerUid: seller.localId });
   await request(403, '/market_places/fixture');
@@ -80,6 +101,7 @@ test('sellers can publish and hide only their own validated profiles', async () 
   await writeProfile(403, buyer.idToken, { status: 'hidden' }, ['status']);
   await writeProfile(403, seller.idToken, { status: 'hidden', displayName: 'Edited while hiding' }, ['status', 'displayName']);
   await writeProfile(200, seller.idToken, { status: 'hidden' }, ['status']);
+  await districtSellers(['Second farm']);
   await request(403, profile, buyer.idToken);
   await request(403, listing, buyer.idToken);
   await request(200, listing, seller.idToken);
