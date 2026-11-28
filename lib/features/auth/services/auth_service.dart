@@ -162,6 +162,34 @@ class AuthService {
     }
   }
 
+  /// Market needs a Firebase session even when private farm sync is off.
+  Future<LocalUser> signInForMarket(LocalUser user, String password) async {
+    try {
+      final result = await _auth.signInWithEmailAndPassword(
+        email: user.email,
+        password: password,
+      );
+      final uid = result.user!.uid;
+      if (user.firebaseUid == uid) return user;
+      if (user.firebaseUid != null) {
+        throw Exception('This Firebase account does not match your farm account.');
+      }
+
+      // Older local accounts can be linked after verifying their credentials.
+      final linked = user.copyWith(firebaseUid: uid);
+      await HiveService.usersBox.put(user.email, linked.toMap());
+      return linked;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'network-request-failed') {
+        throw Exception('Connect to the internet and try again.');
+      }
+      if (e.code == 'invalid-credential') {
+        throw Exception('Could not sign in. Check your password and try again.');
+      }
+      throw Exception(_getErrorMessage(e.code));
+    }
+  }
+
   // ── Logout ──────────────────────────────────────────────────
 
   Future<void> logout({bool syncEnabled = false}) async {

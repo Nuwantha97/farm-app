@@ -64,6 +64,16 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> signInForMarket(String password) async {
+    final user = _user;
+    if (user == null) throw Exception('Sign in to your FarmApp account first.');
+    final linked = await _authService.signInForMarket(user, password);
+    if (identical(_user, user) && user.firebaseUid != linked.firebaseUid) {
+      _user = linked;
+      notifyListeners();
+    }
+  }
+
   Future<void> logout({bool syncEnabled = false}) async {
     await _authService.logout(syncEnabled: syncEnabled);
     await _authService.clearSession();

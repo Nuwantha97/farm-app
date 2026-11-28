@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
@@ -6,6 +7,7 @@ import '../../features/home/screens/home_screen.dart';
 import '../../features/crops/screens/crop_list_screen.dart';
 import '../../features/finance/screens/finance_screen.dart';
 import '../../features/history/screens/history_screen.dart';
+import '../../features/market/screens/market_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -43,7 +45,20 @@ class _MainNavigationState extends State<MainNavigation> {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          ..._screens,
+          if (_currentIndex == _screens.length)
+            StreamProvider<String?>(
+              create: (_) => FirebaseAuth.instance.authStateChanges().map(
+                    (user) => user?.uid,
+                  ),
+              initialData: FirebaseAuth.instance.currentUser?.uid,
+              catchError: (_, _) => null,
+              child: const MarketScreen(),
+            )
+          else
+            const SizedBox.shrink(),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -80,6 +95,11 @@ class _MainNavigationState extends State<MainNavigation> {
               icon: Icon(Icons.history_outlined),
               activeIcon: Icon(Icons.history),
               label: 'History',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.storefront_outlined),
+              activeIcon: Icon(Icons.storefront),
+              label: 'Market',
             ),
           ],
         ),
