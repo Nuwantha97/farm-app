@@ -5,6 +5,7 @@ import '../../auth/providers/auth_provider.dart';
 import 'market_explore_screen.dart';
 import 'market_orders_screen.dart';
 import 'my_shop_screen.dart';
+import '../widgets/market_live_builder.dart';
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
@@ -47,11 +48,48 @@ class MarketScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            MarketExploreScreen(firebaseUid: firebaseUid),
-            MyShopScreen(firebaseUid: firebaseUid),
-            MarketOrdersScreen(firebaseUid: firebaseUid),
+            _MarketTab(
+              index: 0,
+              child: MarketExploreScreen(firebaseUid: firebaseUid),
+            ),
+            _MarketTab(index: 1, child: MyShopScreen(firebaseUid: firebaseUid)),
+            _MarketTab(
+              index: 2,
+              child: MarketOrdersScreen(firebaseUid: firebaseUid),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MarketTab extends StatefulWidget {
+  const _MarketTab({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_MarketTab> createState() => _MarketTabState();
+}
+
+class _MarketTabState extends State<_MarketTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final visible = MarketVisibility.of(context);
+    final controller = DefaultTabController.of(context);
+    return AnimatedBuilder(
+      animation: controller,
+      child: widget.child,
+      builder: (context, child) => MarketVisibility(
+        visible: visible && controller.index == widget.index,
+        child: child!,
       ),
     );
   }

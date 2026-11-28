@@ -143,6 +143,8 @@ Open an active offer in **Market → Explore**, choose a quantity, review the to
 
 In **Orders → Selling**, accepting a request reserves stock in the same Firestore transaction that updates the order. Declining or withdrawing an unanswered request leaves stock available. Either participant can cancel an accepted order and release its reservation once. The seller can add private pickup instructions and mark the order collected. Completion consumes the reservation, with payment handled at pickup. Deploy the updated Firestore rules and Market order indexes before using these flows. Order actions require connectivity.
 
+Market listens to the visible tab or detail screen and resubscribes automatically on return. It labels cached results and waits for server-confirmed data before enabling purchase and order actions. Offline profile and listing edits can still be saved as Hive drafts. Market uses the signed-in Firebase account independently of the private farm sync setting.
+
 ### How sync runs
 
 1. A new crop or expense is saved to Hive as `pending`, and the UI can display it immediately. The app records edits as `modified`. Deleting a record with a cloud ID marks it `deleted` so a later sync can remove its Firestore document. The app can delete a record with no cloud ID locally right away.

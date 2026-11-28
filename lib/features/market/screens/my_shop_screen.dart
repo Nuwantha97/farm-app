@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../services/market_draft_store.dart';
 import '../services/market_firestore.dart';
+import '../widgets/market_live_builder.dart';
 import 'market_listings_screen.dart';
 
 const _draftId = 'shop';
@@ -20,15 +21,13 @@ class MyShopScreen extends StatefulWidget {
 class _MyShopScreenState extends State<MyShopScreen> {
   late final _market = MarketFirestore(widget.firebaseUid);
   late final _drafts = MarketDraftStore(widget.firebaseUid);
-  late final _profile = _market
-      .profile(widget.firebaseUid)
-      .snapshots(includeMetadataChanges: true);
   bool _hiding = false;
 
   Future<void> _hide() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
+    final confirmed = await showMarketDialog<bool>(
+      context,
+      widget.firebaseUid,
+      (context) => AlertDialog(
         title: const Text('Hide shop?'),
         content: const Text(
           'Your shop will disappear from Market discovery. Buyers can still open existing orders.',
@@ -39,7 +38,9 @@ class _MyShopScreenState extends State<MyShopScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: marketNetworkAvailable(context)
+                ? () => Navigator.pop(context, true)
+                : null,
             child: const Text('Hide shop'),
           ),
         ],
@@ -66,8 +67,11 @@ class _MyShopScreenState extends State<MyShopScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
-      stream: _profile,
+    return MarketLiveBuilder(
+      firebaseUid: widget.firebaseUid,
+      stream: () => _market
+          .profile(widget.firebaseUid)
+          .snapshots(includeMetadataChanges: true),
       builder: (context, snapshot) {
         final profile = snapshot.data?.data();
         if (profile?['status'] == 'closed') {
@@ -86,7 +90,7 @@ class _MyShopScreenState extends State<MyShopScreen> {
             ? 'Could not load your shop.'
             : !snapshot.hasData
             ? 'Checking your shop status…'
-            : snapshot.data!.metadata.isFromCache
+            : !marketDataIsCurrent(snapshot, snapshot.data?.metadata)
             ? 'Showing last known shop details.'
             : published
             ? 'Published'
@@ -129,7 +133,12 @@ class _MyShopScreenState extends State<MyShopScreen> {
             ),
             if (published)
               OutlinedButton(
-                onPressed: _hiding ? null : _hide,
+                onPressed:
+                    _hiding ||
+                        !marketNetworkAvailable(context) ||
+                        !marketDataIsCurrent(snapshot, snapshot.data?.metadata)
+                    ? null
+                    : _hide,
                 child: Text(_hiding ? 'Hiding…' : 'Hide shop'),
               ),
             OutlinedButton.icon(
@@ -175,10 +184,7 @@ class _ShopEditorState extends State<_ShopEditor> {
   );
   late String? _district = widget.initial?['districtId'] as String?;
   late String? _placeId = widget.initial?['placeId'] as String?;
-  late Stream<QuerySnapshot<Map<String, dynamic>>> _places = widget
-      .market
-      .places
-      .snapshots();
+  int _placesRetry = 0;
   bool _busy = false;
   String? _error;
 
@@ -236,9 +242,10 @@ class _ShopEditorState extends State<_ShopEditor> {
     final farm = _farmName.text.trim();
     final intro = _introduction.text.trim();
     final location = place.data()['location'] as GeoPoint;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
+    final confirmed = await showMarketDialog<bool>(
+      context,
+      widget.market.firebaseUid,
+      (context) => AlertDialog(
         title: const Text('Preview my shop'),
         content: SingleChildScrollView(
           child: ListBody(
@@ -270,7 +277,9 @@ class _ShopEditorState extends State<_ShopEditor> {
             child: const Text('Keep editing'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: marketNetworkAvailable(context)
+                ? () => Navigator.pop(context, true)
+                : null,
             child: const Text('Publish profile'),
           ),
         ],
@@ -285,8 +294,10 @@ class _ShopEditorState extends State<_ShopEditor> {
       canPop: !_busy,
       child: Scaffold(
         appBar: AppBar(title: const Text('Seller profile')),
-        body: StreamBuilder(
-          stream: _places,
+        body: MarketLiveBuilder(
+          key: ValueKey(_placesRetry),
+          firebaseUid: widget.market.firebaseUid,
+          stream: () => widget.market.places.snapshots(),
           builder: (context, snapshot) {
             final places =
                 (snapshot.data?.docs ?? []).where((doc) {
@@ -388,9 +399,7 @@ class _ShopEditorState extends State<_ShopEditor> {
                     TextButton(
                       onPressed: _busy
                           ? null
-                          : () => setState(
-                              () => _places = widget.market.places.snapshots(),
-                            ),
+                          : () => setState(() => _placesRetry++),
                       child: const Text('Retry loading pickup locations'),
                     )
                   else if (places.isEmpty)
@@ -407,6 +416,10 @@ class _ShopEditorState extends State<_ShopEditor> {
                       ),
                     ),
                   const SizedBox(height: 16),
+                  if (!marketNetworkAvailable(context))
+                    const Text(
+                      'You’re offline. Save a draft and reconnect to publish.',
+                    ),
                   FilledButton(
                     onPressed: selected == null || _busy
                         ? null

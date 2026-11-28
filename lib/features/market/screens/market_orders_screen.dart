@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../models/listing_values.dart';
 import '../services/market_firestore.dart';
+import '../widgets/market_live_builder.dart';
 
 class MarketOrdersScreen extends StatefulWidget {
   const MarketOrdersScreen({super.key, required this.firebaseUid});
@@ -14,18 +15,14 @@ class MarketOrdersScreen extends StatefulWidget {
 
 class _MarketOrdersScreenState extends State<MarketOrdersScreen> {
   late final _market = MarketFirestore(widget.firebaseUid);
-  late var _orders = _market
-      .orders(selling: false)
-      .snapshots(includeMetadataChanges: true);
+  int _retry = 0;
   bool _selling = false;
   final _busy = <String>{};
 
   void _select(bool selling) {
     setState(() {
       _selling = selling;
-      _orders = _market
-          .orders(selling: selling)
-          .snapshots(includeMetadataChanges: true);
+      _retry++;
     });
   }
 
@@ -44,9 +41,12 @@ class _MarketOrdersScreenState extends State<MarketOrdersScreen> {
         ),
       ),
       Expanded(
-        child: StreamBuilder(
-          key: ValueKey(_selling),
-          stream: _orders,
+        child: MarketLiveBuilder(
+          key: ValueKey((_selling, _retry)),
+          firebaseUid: widget.firebaseUid,
+          stream: () => _market
+              .orders(selling: _selling)
+              .snapshots(includeMetadataChanges: true),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return Center(
@@ -60,11 +60,18 @@ class _MarketOrdersScreenState extends State<MarketOrdersScreen> {
             if (orders == null) {
               return const Center(child: CircularProgressIndicator());
             }
+            final current = marketDataIsCurrent(
+              snapshot,
+              snapshot.data?.metadata,
+            );
+            final online = marketNetworkAvailable(context);
             return ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
-                if (snapshot.data!.metadata.isFromCache)
-                  const Text('Showing last known requests.'),
+                if (!current || !online)
+                  const Text(
+                    'Showing last known requests. Reconnect to update orders.',
+                  ),
                 if (orders.isEmpty)
                   Text(
                     _selling
@@ -72,11 +79,7 @@ class _MarketOrdersScreenState extends State<MarketOrdersScreen> {
                         : 'No purchase requests sent.',
                   ),
                 for (final order in orders)
-                  _orderTile(
-                    order.id,
-                    order.data(),
-                    !snapshot.data!.metadata.isFromCache,
-                  ),
+                  _orderTile(order.id, order.data(), current && online),
               ],
             );
           },
@@ -110,9 +113,10 @@ class _MarketOrdersScreenState extends State<MarketOrdersScreen> {
     String label,
     String message,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
+    final confirmed = await showMarketDialog<bool>(
+      context,
+      widget.firebaseUid,
+      (context) => AlertDialog(
         title: Text(label),
         content: Text(message),
         actions: [
@@ -121,7 +125,9 @@ class _MarketOrdersScreenState extends State<MarketOrdersScreen> {
             child: const Text('Go back'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: marketNetworkAvailable(context)
+                ? () => Navigator.pop(context, true)
+                : null,
             child: Text(label),
           ),
         ],
@@ -133,9 +139,10 @@ class _MarketOrdersScreenState extends State<MarketOrdersScreen> {
   }
 
   Future<void> _editPickup(String id, String current) async {
-    final instructions = await showDialog<String>(
-      context: context,
-      builder: (_) => _PickupDialog(current: current),
+    final instructions = await showMarketDialog<String>(
+      context,
+      widget.firebaseUid,
+      (_) => _PickupDialog(current: current),
     );
     if (mounted && instructions != null) {
       await _run(id, () => _market.savePickupInstructions(id, instructions));
@@ -261,7 +268,7 @@ class _PickupDialogState extends State<_PickupDialog> {
         child: const Text('Cancel'),
       ),
       FilledButton(
-        onPressed: _text.text.trim().isEmpty
+        onPressed: _text.text.trim().isEmpty || !marketNetworkAvailable(context)
             ? null
             : () => Navigator.pop(context, _text.text.trim()),
         child: const Text('Save'),

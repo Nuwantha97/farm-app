@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../models/listing_values.dart';
 import '../services/market_firestore.dart';
+import '../widgets/market_live_builder.dart';
 import 'market_request_dialog.dart';
 
 class MarketFarmerScreen extends StatefulWidget {
@@ -21,7 +23,8 @@ class MarketFarmerScreen extends StatefulWidget {
 }
 
 class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
-  late final _profile = widget.market
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _watchProfile() => widget
+      .market
       .profile(widget.sellerUid)
       .snapshots(includeMetadataChanges: true);
 
@@ -45,15 +48,16 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
     }
   }
 
-  late final _listings = widget.market
+  Stream<QuerySnapshot<Map<String, dynamic>>> _watchListings() => widget.market
       .activeListings(widget.sellerUid)
       .snapshots(includeMetadataChanges: true);
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Farmer profile')),
-    body: StreamBuilder(
-      stream: _profile,
+    body: MarketLiveBuilder(
+      firebaseUid: widget.market.firebaseUid,
+      stream: _watchProfile,
       builder: (context, snapshot) {
         final data = snapshot.data?.data();
         if (snapshot.hasError ||
@@ -68,7 +72,7 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
         return ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            if (snapshot.data!.metadata.isFromCache)
+            if (!marketDataIsCurrent(snapshot, snapshot.data?.metadata))
               const Text('Showing last known shop details.'),
             Text(
               data['displayName'] as String? ?? 'Farmer',
@@ -86,8 +90,9 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
               'Active offers',
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            StreamBuilder(
-              stream: _listings,
+            MarketLiveBuilder(
+              firebaseUid: widget.market.firebaseUid,
+              stream: _watchListings,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return const Text('Offers are unavailable.');
@@ -95,9 +100,13 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
                 final listings = snapshot.data?.docs;
                 if (listings == null) return const LinearProgressIndicator();
                 if (listings.isEmpty) return const Text('No active offers.');
+                final current = marketDataIsCurrent(
+                  snapshot,
+                  snapshot.data?.metadata,
+                );
                 return Column(
                   children: [
-                    if (snapshot.data!.metadata.isFromCache)
+                    if (!current || !marketNetworkAvailable(context))
                       const Text(
                         'Showing last known offers. Reconnect to request a purchase.',
                       ),
@@ -111,7 +120,8 @@ class _MarketFarmerScreenState extends State<MarketFarmerScreen> {
                         subtitle: Text(listingSummary(listing.data())),
                         onTap:
                             widget.sellerUid != widget.market.firebaseUid &&
-                                !snapshot.data!.metadata.isFromCache &&
+                                current &&
+                                marketNetworkAvailable(context) &&
                                 listingSummary(listing.data()).isNotEmpty
                             ? () => _request(listing.id, listing.data())
                             : null,

@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/listing_values.dart';
 import '../services/market_draft_store.dart';
 import '../services/market_firestore.dart';
+import '../widgets/market_live_builder.dart';
 
 class MarketRequestDialog extends StatefulWidget {
   const MarketRequestDialog({
@@ -104,6 +105,20 @@ class _MarketRequestDialogState extends State<MarketRequestDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (!marketAccountMatches(context, widget.market.firebaseUid)) {
+      return AlertDialog(
+        content: const Text(
+          'Sign in with the same account to view this request.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    }
+    final online = marketNetworkAvailable(context);
     if (_existingOrder case final order?) {
       final unit = order['unit'] as String;
       final quantity = listingInput(order['quantity'], unit == 'kg' ? 3 : 0);
@@ -159,6 +174,7 @@ class _MarketRequestDialogState extends State<MarketRequestDialog> {
               ),
               const SizedBox(height: 12),
               if (valid) Text('Total ${formatMarketMoney(total)}'),
+              if (!online) const Text('Reconnect to send or check a request.'),
               const Text(
                 'Awaiting seller confirmation after you send. Payment is at pickup.',
               ),
@@ -176,11 +192,13 @@ class _MarketRequestDialogState extends State<MarketRequestDialog> {
           ),
           if (!valid && (_pending != null || _submissionStarted))
             TextButton(
-              onPressed: _busy ? null : () => _send(null),
+              onPressed: _busy || !online ? null : () => _send(null),
               child: const Text('Check previous request'),
             ),
           FilledButton(
-            onPressed: _busy || !valid ? null : () => _send(quantity),
+            onPressed: _busy || !online || !valid
+                ? null
+                : () => _send(quantity),
             child: Text(_busy ? 'Sending…' : 'Request to buy'),
           ),
         ],

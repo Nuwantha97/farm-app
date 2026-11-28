@@ -7,6 +7,7 @@ import '../../crops/services/crop_service.dart';
 import '../models/listing_values.dart';
 import '../services/market_draft_store.dart';
 import '../services/market_firestore.dart';
+import '../widgets/market_live_builder.dart';
 
 const _listingDraft = MarketDraftType.listing;
 const _newDraft = 'new';
@@ -22,9 +23,6 @@ class MarketListingsScreen extends StatefulWidget {
 
 class _MarketListingsScreenState extends State<MarketListingsScreen> {
   late final _drafts = MarketDraftStore(widget.market.firebaseUid);
-  late final _listings = widget.market.ownListings.snapshots(
-    includeMetadataChanges: true,
-  );
   String? _changing;
 
   Future<void> _edit({String? id, Map<String, dynamic>? listing}) async {
@@ -68,10 +66,15 @@ class _MarketListingsScreenState extends State<MarketListingsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Produce listings')),
-    body: StreamBuilder(
-      stream: _listings,
+    body: MarketLiveBuilder(
+      firebaseUid: widget.market.firebaseUid,
+      stream: () =>
+          widget.market.ownListings.snapshots(includeMetadataChanges: true),
       builder: (context, snapshot) {
         final docs = snapshot.data?.docs;
+        final online =
+            marketNetworkAvailable(context) &&
+            marketDataIsCurrent(snapshot, snapshot.data?.metadata);
         final newDraft = _drafts.read(_listingDraft, _newDraft);
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -90,8 +93,10 @@ class _MarketListingsScreenState extends State<MarketListingsScreen> {
             else if (docs == null)
               const LinearProgressIndicator()
             else ...[
-              if (snapshot.data!.metadata.isFromCache)
-                const Text('Showing last known offers.')
+              if (!online)
+                const Text(
+                  'Showing last known offers. Reconnect to pause or resume.',
+                )
               else if (docs.isEmpty)
                 const Text('You have no produce listings yet.'),
               for (final doc in docs)
@@ -113,14 +118,16 @@ class _MarketListingsScreenState extends State<MarketListingsScreen> {
                     itemBuilder: (_) => [
                       const PopupMenuItem(value: 'edit', child: Text('Edit')),
                       if (doc.data()['status'] == 'paused')
-                        const PopupMenuItem(
+                        PopupMenuItem(
+                          enabled: online,
                           value: 'resume',
-                          child: Text('Resume'),
+                          child: const Text('Resume'),
                         )
                       else
-                        const PopupMenuItem(
+                        PopupMenuItem(
+                          enabled: online,
                           value: 'pause',
-                          child: Text('Pause'),
+                          child: const Text('Pause'),
                         ),
                     ],
                     onSelected: (action) {
@@ -224,9 +231,10 @@ class _ListingEditorState extends State<_ListingEditor> {
             .toList()
           ..sort();
     if (!mounted) return;
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
+    final name = await showMarketDialog<String>(
+      context,
+      widget.market.firebaseUid,
+      (context) => SimpleDialog(
         title: const Text('Copy a crop name'),
         children: [
           if (names.isEmpty)
@@ -299,9 +307,10 @@ class _ListingEditorState extends State<_ListingEditor> {
       'pickupWindow': _pickup.text.trim(),
     };
     final isNew = widget.draftKey == _newDraft;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
+    final confirmed = await showMarketDialog<bool>(
+      context,
+      widget.market.firebaseUid,
+      (context) => AlertDialog(
         title: Text(listing['produceName'] as String),
         content: Text(listingSummary(listing)),
         actions: [
@@ -310,7 +319,9 @@ class _ListingEditorState extends State<_ListingEditor> {
             child: const Text('Keep editing'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: marketNetworkAvailable(context)
+                ? () => Navigator.pop(context, true)
+                : null,
             child: Text(isNew ? 'Publish offer' : 'Save changes'),
           ),
         ],
@@ -333,7 +344,16 @@ class _ListingEditorState extends State<_ListingEditor> {
 
   @override
   Widget build(BuildContext context) {
+    if (!marketAccountMatches(context, widget.market.firebaseUid)) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(
+          child: Text('Sign in with the same account to edit this offer.'),
+        ),
+      );
+    }
     final userId = context.watch<AuthProvider>().currentUserId;
+    final online = marketNetworkAvailable(context);
     return PopScope(
       canPop: !_busy,
       child: Scaffold(
@@ -430,8 +450,12 @@ class _ListingEditorState extends State<_ListingEditor> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               const SizedBox(height: 12),
+              if (!online)
+                const Text(
+                  'You’re offline. Save a draft and reconnect to publish.',
+                ),
               FilledButton(
-                onPressed: _busy ? null : _preview,
+                onPressed: _busy || !online ? null : _preview,
                 child: const Text('Preview offer'),
               ),
               OutlinedButton(

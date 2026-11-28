@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../services/market_firestore.dart';
 import '../widgets/sri_lanka_map.dart';
+import '../widgets/market_live_builder.dart';
 import 'market_farmer_screen.dart';
 
 typedef _MarketDocument = QueryDocumentSnapshot<Map<String, dynamic>>;
@@ -21,7 +22,7 @@ class _MarketExploreScreenState extends State<MarketExploreScreen> {
   String? _district;
   String? _selectedPlace;
   Map<String, _MarketDocument> _places = {};
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _farmers;
+  int _retry = 0;
   bool _showMap = true;
 
   Future<void> _chooseDistrict() async {
@@ -93,15 +94,16 @@ class _MarketExploreScreenState extends State<MarketExploreScreen> {
       _district = selection.district;
       _places = selection.places;
       _selectedPlace = null;
-      _subscribe();
+      _retry++;
     });
   }
 
-  void _subscribe() {
-    _farmers = _market
-        .publishedProfiles(_district!)
-        .snapshots(includeMetadataChanges: true);
-  }
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _watchFarmers() =>
+      _district == null
+      ? null
+      : _market
+            .publishedProfiles(_district!)
+            .snapshots(includeMetadataChanges: true);
 
   String _placeLabel(String? placeId) =>
       _places[placeId]?.data()['name'] as String? ?? 'Pickup area unavailable';
@@ -139,9 +141,10 @@ class _MarketExploreScreenState extends State<MarketExploreScreen> {
           ),
         ),
         Expanded(
-          child: StreamBuilder(
-            key: ValueKey(_district),
-            stream: _farmers,
+          child: MarketLiveBuilder(
+            key: ValueKey((_district, _retry)),
+            firebaseUid: widget.firebaseUid,
+            stream: _watchFarmers,
             builder: (context, snapshot) {
               final docs = snapshot.data?.docs ?? const <_MarketDocument>[];
               final byPlace = <String, List<_MarketDocument>>{};
@@ -158,7 +161,7 @@ class _MarketExploreScreenState extends State<MarketExploreScreen> {
                   ? 'Could not load farmers in this district.'
                   : !snapshot.hasData
                   ? 'Loading farmers…'
-                  : snapshot.data!.metadata.isFromCache
+                  : !marketDataIsCurrent(snapshot, snapshot.data?.metadata)
                   ? 'Showing last known results.'
                   : docs.isEmpty
                   ? 'No farmers have published in this district yet.'
@@ -177,7 +180,7 @@ class _MarketExploreScreenState extends State<MarketExploreScreen> {
                     ),
                   if (snapshot.hasError)
                     TextButton(
-                      onPressed: () => setState(_subscribe),
+                      onPressed: () => setState(() => _retry++),
                       child: const Text('Retry'),
                     ),
                   Expanded(

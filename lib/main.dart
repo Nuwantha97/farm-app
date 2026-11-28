@@ -1,6 +1,9 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
+
 import 'firebase_options.dart';
 
 import 'core/theme/app_theme.dart';
@@ -42,6 +45,16 @@ void main() async {
 class FarmApp extends StatelessWidget {
   const FarmApp({super.key});
 
+  static Stream<bool?> _marketConnectivity() async* {
+    final connectivity = Connectivity();
+    yield !(await connectivity.checkConnectivity()).contains(
+      ConnectivityResult.none,
+    );
+    yield* connectivity.onConnectivityChanged
+        .map((results) => !results.contains(ConnectivityResult.none))
+        .distinct();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -52,6 +65,17 @@ class FarmApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
         ChangeNotifierProvider(create: (_) => HistoryProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        StreamProvider<String?>(
+          create: (_) =>
+              FirebaseAuth.instance.authStateChanges().map((user) => user?.uid),
+          initialData: FirebaseAuth.instance.currentUser?.uid,
+          catchError: (_, _) => null,
+        ),
+        StreamProvider<bool?>(
+          create: (_) => _marketConnectivity(),
+          initialData: null,
+          catchError: (_, _) => null,
+        ),
       ],
       child: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
